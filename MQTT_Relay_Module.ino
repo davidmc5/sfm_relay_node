@@ -1,3 +1,6 @@
+
+#define FW_VERSION 1
+//const char* fw_urlBase = "sfm10.mooo.com/fota/";
 /* 
  * To compile and upload with Arduino IDE: 
  * set the board to "Generic ESP8266 Module"
@@ -56,6 +59,7 @@
 #include <PubSubClient.h>
 #include <ESP8266HTTPClient.h>
 #include <Wire.h>
+#include <ESP8266httpUpdate.h> //fota
 
 #include "utils.h"
 #include "mqtt_brokers.h"
@@ -192,6 +196,7 @@ unsigned long lastConnectTry = 0;
 #define mqttMaxPayloadLength 50
 char *topics[maxTopics]; /* this array holds the pointers to each topic token. */
 char mqttTopic[topic_max_length];
+char crashInfo[topic_max_length];
 
 
 /** I2C Relay Control */

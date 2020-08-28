@@ -25,8 +25,23 @@ void manageMqtt(){
           sprint(2, "MQTT Payload", wanIp);
 
 
-     
-        } else {   
+          /* Publish status message on power up */
+
+          int stringLength = ESP.getResetInfo().length();
+
+          /* make sure crach string fits in the array or truncate to max length */
+
+          int length = (stringLength <= topic_max_length) ? stringLength : topic_max_length;
+          ESP.getResetInfo().toCharArray(crashInfo, length+1);
+          
+          /*build the mqtt message */
+          strcpy(mqttTopic, "status/");
+          strcat(mqttTopic, nodeId);          
+          mqttClient.publish(mqttTopic, crashInfo); //send crash info
+          sprint(2, "MQTT Outgoing - Topic", mqttTopic);  
+          sprint(2, "MQTT Payload", crashInfo);
+
+         } else {   
           sprint(0, "Failed to Connect to MQTT - State", mqttClient.state());
           delay(5000);   
         }
