@@ -25,21 +25,26 @@ void manageMqtt(){
           sprint(2, "MQTT Payload", wanIp);
 
 
-          /* Publish status message on power up */
+          /* Publish status/crash message on power up */
 
+          /* Send first the current firmware version */
+          strcpy(mqttTopic, "status/");
+          strcat(mqttTopic, nodeId);          
+          mqttClient.publish(mqttTopic, FW_VERSION);
+          sprint(2, "MQTT Outgoing - Topic", mqttTopic); 
+
+          /* send restart reason message */
           int stringLength = ESP.getResetInfo().length();
-
           /* make sure crach string fits in the array or truncate to max length */
-
-          int length = (stringLength <= topic_max_length) ? stringLength : topic_max_length;
-          ESP.getResetInfo().toCharArray(crashInfo, length+1);
-          
+          int length = (stringLength <= topic_max_length) ? stringLength : topic_max_length-1;
+          ESP.getResetInfo().toCharArray(restartCode, length+1); 
+          restartCode[length+2] = '\0'; /* add a null terminator for the string */          
           /*build the mqtt message */
           strcpy(mqttTopic, "status/");
           strcat(mqttTopic, nodeId);          
-          mqttClient.publish(mqttTopic, crashInfo); //send crash info
+          mqttClient.publish(mqttTopic, restartCode); //send crash info
           sprint(2, "MQTT Outgoing - Topic", mqttTopic);  
-          sprint(2, "MQTT Payload", crashInfo);
+          sprint(2, "MQTT Payload", restartCode);
 
          } else {   
           sprint(0, "Failed to Connect to MQTT - State", mqttClient.state());
@@ -58,6 +63,8 @@ void manageMqtt(){
 //////////GIVE length A MORE DESCRIPTIVE NAME: mqttPayloadLength
 ////////////////////////////////////////////////////////////////
 void mqttCallback(char* topic, byte* payload, unsigned int length) {
+//  char message[50]; /*  sed for requests to broker or web server */
+  
   /* Verify topic length is within limit */
   int topic_length = strlen(topic);
   if (topic_length > topic_max_length){
@@ -93,12 +100,9 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
 ///////////////////////////////////////////////////////////////////////////
 
   /* copy the received bytes from payload to a null terminated character string */
-//  sprint(2, "PAYLOAD VARIABLE LENGTH", length);
-
   //Declare message payload array for character string
   //////char msg[length+1]; //add space for the null termination -- WHY THIS WORKS W/O MALLOC?
   char msg[mqttMaxPayloadLength]; //Payload bytes
-
   /* convert payload bytes to a string and add null terminator */
   for (int i=0; i < length; i++){
     msg[i] = (char)payload[i];
@@ -145,17 +149,27 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
   /////////////////////////////////////////////////////////////////////////
 
 
-  // USE A CASE SWITCH HERE FOR THE DIFFERENT TARGETS: RELAYS,SENSORS CONFIGURATION
+  // USE A CASE SWITCH HERE FOR THE DIFFERENT TARGETS: RELAYS,SENSORS, CONFIGURATION, FWUPDATE
    
-  /* set relay on/off */ /////////////////Add this to the setOutput function!!!
-  ////////////////////////////////////////////////////////////////////////////
-  /////////////This should ONLY be 0 or 1 to set relays. 
-  /////////////Capture other options to be handled differntly
-  int relayAction = (payload[0]-'0'); //Convert to integer. 0=off, 1=on, 2=toggle, 3=pulse (on for 1 sec then off), (add an option for flashing)
-  if(strcmp(topics[1], "relay") == 0){    
+  /* relay control */
+  if(strcmp(topics[1], "relay") == 0){ 
+    int relayAction = (payload[0]-'0'); //Convert to integer. 0=off, 1=on   
     setOutput(&relayState, topics[2], relayAction); //topics[2] is the relay#
   }
 
+  /* firmware updates */
+  else if (strcmp(topics[1], "fwupdate") == 0){
+    /* msg is the mqtt payload received and must include the webserver address, port and filename */
+    sprint(2, "REQUESTED FIRMWARE UPGRADE", msg);
+    t_httpUpdate_return ret = ESPhttpUpdate.update(msg);
+//    t_httpUpdate_return ret = ESPhttpUpdate.update( "http://10.0.0.200:8000/fw_rev_2.bin");
+
+    switch(ret) {
+      case HTTP_UPDATE_FAILED:
+        Serial.printf("HTTP_UPDATE_FAILED Error (%d): %s\n",  ESPhttpUpdate.getLastError(), ESPhttpUpdate.getLastErrorString().c_str());
+        break;
+    }
+  }
 
 
 

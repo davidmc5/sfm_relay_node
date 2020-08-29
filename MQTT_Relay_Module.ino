@@ -1,5 +1,6 @@
 
-#define FW_VERSION 1
+#define FW_VERSION "1.4"
+
 //const char* fw_urlBase = "sfm10.mooo.com/fota/";
 /* 
  * To compile and upload with Arduino IDE: 
@@ -196,7 +197,7 @@ unsigned long lastConnectTry = 0;
 #define mqttMaxPayloadLength 50
 char *topics[maxTopics]; /* this array holds the pointers to each topic token. */
 char mqttTopic[topic_max_length];
-char crashInfo[topic_max_length];
+char restartCode[topic_max_length];
 
 
 /** I2C Relay Control */
@@ -280,9 +281,10 @@ void setup() {
   /* Intitialize serial port to print console mesages if DEBUG mode is set */
   serialInit();
 
-  //print previous crash info
-  //If no previous crash it will report: "External System"
-  sprint(0,"CRASH INFO 1", ESP.getResetInfo());
+  //print Restart Message
+  //If no previous crash it will report: "External System" or "Power On"
+  //After a software upgrade: "Software/System restart"
+  sprint(0,"BOOTING", ESP.getResetInfo());
 
   
   ////TASK-1:
