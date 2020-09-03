@@ -48,11 +48,12 @@ void startAP(){
    * *captive portal detectors
    * *not found.
    */
-  server.on("/", handleRoot);
+//  server.on("/", handleRoot);
+  server.on("/", handleWifi);
   server.on("/wifi", handleWifi);
   server.on("/wifisave", handleWifiSave);
-  server.on("/generate_204", handleRoot);  //Android captive portal. Maybe not needed. Might be handled by notFound handler.
-  server.on("/fwlink", handleRoot);  //Microsoft captive portal. Maybe not needed. Might be handled by notFound handler.
+//  server.on("/generate_204", handleRoot);  //Android captive portal. Maybe not needed. Might be handled by notFound handler.
+//  server.on("/fwlink", handleRoot);  //Microsoft captive portal. Maybe not needed. Might be handled by notFound handler.
   server.onNotFound(handleNotFound);
   
   server.begin(); // Web server start
@@ -62,20 +63,18 @@ void startAP(){
   connect = strlen(cfgSettings.ap_ssid) > 0; // Request WLAN connect (TRUE) if there is a SSID (of non-zero length)
  }
 
-  ///////////////////////////////////////////
-  // WHAT IS THIS FOR? ssid? is for wifi or ap?
-  ///////////////////////////////////////
+/* manage connection to AP */
  void manageWifi(){
   if (connect) {    
     sprint(2, "WiFi Client Connect Request to", cfgSettings.ap_ssid);    
     connect = false;
     connectWifi();
     lastConnectTry = millis();
-  }  
+  }    
   unsigned int s = WiFi.status();
+  /* If WLAN disconnected and idle try to reconnect */
+  /* Don't set retry time too low as it will interfere with the softAP operation */
   if (s == 0 && millis() > (lastConnectTry + 60000)) {
-    /* If WLAN disconnected and idle try to connect */
-    /* Don't set retry time too low as retry interfere the softAP operation */
     connect = true;
   }
   if (wifiStatus != s) {
@@ -96,29 +95,32 @@ void startAP(){
         // Add service to MDNS-SD
         MDNS.addService("http", "tcp", 80);
       }
-
-      ////////////////////////////////////////////////////////
-      // GET PUBLIC IP
-      /////////////////////
-      //since we are connected to the internet, report public IP
-      HTTPClient http;  //Declare an object of class HTTPClient
+      
+      /* get public IP */
+      HTTPClient http;
+      //////////////////////////////////////////////////////////
+      /////// >>> MAKE THIS SERVICE SITE CONFIGURABLE VIA MQTT
+      //////////////////////////////////////////////////////////
       http.begin("http://api.ipify.org/?format=text");  
       int httpCode = http.GET(); //Send the request
       if (httpCode > 0){
-        //convert const String (http.getString)to const char* (wanIp)
+        /* convert const String (http.getString)to const char* (wanIp) */
         http.getString().toCharArray(wanIp, http.getString().length()+1);
         sprint(2,"Public IP", wanIp);
       }
       http.end();   //Close connection
-      ///////////////////////////////////////////////////////
-      
-    } else if (s == WL_NO_SSID_AVAIL) {
-      WiFi.disconnect();
+    
+    } else {
+        /* Not connected to WiFI - Clear IPs*/
+        strcpy(wanIp, "0.0.0.0");
+        if (s == WL_NO_SSID_AVAIL) {
+          WiFi.disconnect();
+        }
+      }
     }
-  }
-  if (s == WL_CONNECTED) {
-    MDNS.update();
-  }
+    if (s == WL_CONNECTED) {
+      MDNS.update();
+    }
  }
 
 

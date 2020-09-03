@@ -45,6 +45,7 @@ void manageMqtt(){
           mqttClient.publish(mqttTopic, restartCode); //send crash info
           sprint(2, "MQTT Outgoing - Topic", mqttTopic);  
           sprint(2, "MQTT Payload", restartCode);
+          delay(1000);
 
          } else {   
           sprint(0, "Failed to Connect to MQTT - State", mqttClient.state());
@@ -162,6 +163,7 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
     /* msg is the mqtt payload received and must include the webserver address, port and filename */
     sprint(2, "REQUESTED FIRMWARE UPGRADE", msg);
     t_httpUpdate_return ret = ESPhttpUpdate.update(msg);
+
 //    t_httpUpdate_return ret = ESPhttpUpdate.update( "http://10.0.0.200:8000/fw_rev_2.bin");
 
     switch(ret) {

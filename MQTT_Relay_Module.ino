@@ -1,5 +1,5 @@
 
-#define FW_VERSION "1.4"
+#define FW_VERSION "1.7"
 
 //const char* fw_urlBase = "sfm10.mooo.com/fota/";
 /* 
@@ -120,7 +120,7 @@
 */
 
 ///////////////////////////////////////////////////
-////// PUT ALL THESE DEFINITIONS ON a config/header FILES 
+////// PUT ALL THESE DEFINITIONS ON config/header FILES 
 ///////////////////////////////////////////////////
 
 /*
@@ -129,7 +129,7 @@
  * if no AP password is defined, a client will login automatically after selecting the SSID.
  */
 #ifndef APSSID
-#define APSSID "SFM_Node_" /* the ap ssid will include the last 4 digits of the MAC: SFM_Node_B033 */
+#define APSSID "RLY_Node_" /* the ap ssid will include the last 4 digits of the MAC: SFM_Node_B033 */
 #define APPSK  "" /* Do not set a password */
 #endif
 
@@ -163,13 +163,14 @@ struct cfgSettings_s{
   char ap_pswd[32];
   char ap_ok[3];
   char site_id[10]; /* Populated by initial setup or HELLO handshake */
-  char node_type[20]; /* node capabilities: relay and/or sensor and # of channels (rel-16:sen-8;) */
+  char node_type[10]; /* RLY: relay / SEN: sensor / MUL: multiple*/
+  char node_chanels[20]; /* r-16;s-16 */
 } cfgSettings;
 
 
 /* Node's info */
 char nodeId[18]; /* wifi MAC - this is the nodeId variable populated by the wifi module */
-char wanIp[20]; /* public IP of the node. Used by controller to determine siteId on hello/ mqtt message */
+char wanIp[20]="0.0.0.0"; /* public IP of the node. Used by controller to determine siteId on hello/ mqtt message */
 //char siteId[10]= "NEW_NODE"; //STORED IN flash - unique ID used as mqtt topic for all site nodes. Populated by initial setup or HELLO handshake.
 
 // DNS server
@@ -230,9 +231,12 @@ void setLED(int led, int action) {
 
 
 ////TASK-2
-// Turn on LED when it gets an IP
+/* Declare the wifi event handlers */
+// will get called when it gets an IP. Used to turn on LED (stop blinking)
 WiFiEventHandler gotIpEventHandler;
 
+/* will be called when disconnected from wifi - to start led blinking */
+WiFiEventHandler disconnectedEventHandler;
 
 ////TASK-3
 //blink led using timer (include <Ticker.h>)
@@ -276,7 +280,7 @@ PubSubClient mqttClient(espClient);
 /////////////////
 void setup() {
 
-  delay(1000); //not sure why or if this delay is needed
+  delay(1000); //not sure if this delay is needed
 
   /* Intitialize serial port to print console mesages if DEBUG mode is set */
   serialInit();
@@ -294,13 +298,20 @@ void setup() {
 
   
   ////TASK-2
-  ///////////////////// PUT THIS LAMBDA ON A SEPARATE TAB  
+  ///////////////////// 
+  //https://arduino-esp8266.readthedocs.io/en/latest/esp8266wifi/generic-examples.html
+  //https://arduino-esp8266.readthedocs.io/en/latest/esp8266wifi/generic-class.html
   //Turn LED ON when client adquires IP from AP
   gotIpEventHandler = WiFi.onStationModeGotIP([](const WiFiEventStationModeGotIP& event){
     blinker.detach();
     setLED(LED, LED_ON);
   });
 
+  /// blink led when it loses wifi
+  disconnectedEventHandler = WiFi.onStationModeDisconnected([](const WiFiEventStationModeDisconnected& event){
+    blinker.attach(0.5, changeState);   
+  });
+    
   ////TASK-3
   // blink LED
   //Set a ticker every 0.5s
