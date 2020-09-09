@@ -1,5 +1,5 @@
 
-#define FW_VERSION "1.7"
+#define FW_VERSION "FW v1.9"
 
 //const char* fw_urlBase = "sfm10.mooo.com/fota/";
 /* 
@@ -172,6 +172,7 @@ struct cfgSettings_s{
 char nodeId[18]; /* wifi MAC - this is the nodeId variable populated by the wifi module */
 char wanIp[20]="0.0.0.0"; /* public IP of the node. Used by controller to determine siteId on hello/ mqtt message */
 //char siteId[10]= "NEW_NODE"; //STORED IN flash - unique ID used as mqtt topic for all site nodes. Populated by initial setup or HELLO handshake.
+char clientId[20]; /* Unique client ID to connect to mqtt broker. Used by the mqtt module - mqttClient.connect()*/ 
 
 // DNS server
 const byte DNS_PORT = 53;
@@ -289,6 +290,7 @@ void setup() {
   //If no previous crash it will report: "External System" or "Power On"
   //After a software upgrade: "Software/System restart"
   sprint(0,"BOOTING", ESP.getResetInfo());
+  sprint(0,"FIRMWARE", FW_VERSION);
 
   
   ////TASK-1:
@@ -339,8 +341,6 @@ void setup() {
   /* For testing - Send on/off commands to relays */
   //  setOutput(&relayState, "1", 1); // turn relay 1 on
   //  setOutput(&relayState, "1", 0); // trun relay 1 off
-
-
 
 } /* END OF SETUP */
 

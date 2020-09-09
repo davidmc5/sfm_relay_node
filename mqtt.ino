@@ -1,10 +1,21 @@
 
 void manageMqtt(){
+  /* check mqtt conection status only if connected to wifi */
   if (WiFi.status() == WL_CONNECTED){
 
     if (!mqttClient.connected()) { 
-        /* the mqttServer and callback are set in the setup() funtion */        
-        if (mqttClient.connect("relayNode", mqttUser, mqttPassword )) {
+      
+        /* the mqttServer and callback are set in the setup() function */ 
+        //https://pubsubclient.knolleary.net/api#connect
+        // boolean connect (clientID, [username, password], [willTopic, willQoS, willRetain, willMessage], [cleanSession])
+
+        /* Get unique client ID to connect to mqtt broker - use NODE-MAC ADDr */
+        strcpy(clientId, "NODE-");
+        strcat(clientId, nodeId);
+
+        /* mqtt username and password are defined in the file mqtt_brokeers.h */
+        if (mqttClient.connect(clientId, mqttUser, mqttPassword )) {
+       //if (mqttClient.connect("relayNode", mqttUser, mqttPassword )) {
      
           sprint(2, "Connected to MQTT Broker", mqttServer);
 
@@ -45,14 +56,17 @@ void manageMqtt(){
           mqttClient.publish(mqttTopic, restartCode); //send crash info
           sprint(2, "MQTT Outgoing - Topic", mqttTopic);  
           sprint(2, "MQTT Payload", restartCode);
-          delay(1000);
+          delay(3000);
 
-         } else {   
+       } else {   
           sprint(0, "Failed to Connect to MQTT - State", mqttClient.state());
           delay(5000);   
         }
     }
     mqttClient.loop();
+  } else {
+    /* not yet connected to wifi --wait a bit */
+    delay(5000);
   }
 }
 
