@@ -23,10 +23,8 @@ void manageMqtt(){
           strcpy(mqttTopic, nodeId);
           strcat(mqttTopic, "/#");
           mqttClient.subscribe(mqttTopic);
-
           //mqttClient.subscribe("#"); //subscribe to ALL FOR TESTING ONLY!
-          //mqttClient.subscribe("led");
-          //mqttClient.subscribe("relay/#");
+  
 
           /* Publish hello message on power up */
           strcpy(mqttTopic, "hello/");
@@ -43,7 +41,8 @@ void manageMqtt(){
           strcat(mqttTopic, nodeId);          
           mqttClient.publish(mqttTopic, FW_VERSION);
           sprint(2, "MQTT Outgoing - Topic", mqttTopic); 
-
+          sprint(2, "MQTT Payload", FW_VERSION);
+          
           /* send restart reason message */
           int stringLength = ESP.getResetInfo().length();
           /* make sure crach string fits in the array or truncate to max length */

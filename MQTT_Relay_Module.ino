@@ -1,5 +1,5 @@
 
-#define FW_VERSION "FW v1.9"
+#define FW_VERSION "1.10"
 
 //const char* fw_urlBase = "sfm10.mooo.com/fota/";
 /* 
@@ -135,8 +135,8 @@
 
 char softAP_ssid[20];
 const char *softAP_password = APPSK;
-/* hostname for mDNS. Should work at least on windows. Try http://SFM-Node.local */
-const char *myHostname = "SFM-Node";
+/* hostname for mDNS. Should work at least on windows. Try http://node.local */
+const char *myHostname = "node";
 
 /* levels for debug messages */
 char *debugLevel[] = {"ALERT", "DEBUG", "INFO"};
@@ -154,6 +154,7 @@ char *debugLevel[] = {"ALERT", "DEBUG", "INFO"};
 char *wifiStates[] = {"IDLE", "NO SSID", "2:?", "CONNECTED", "INCORRECT PASSWORD", "5:?", "DISCONNECTED"};
 unsigned int wifiStatus = WL_IDLE_STATUS; /* Set initial WiFi status to 'Not connected-Changing between status */
 
+//char tempBuffer[40]; /*used for temporary storage - handleHttp module */
 
 /* starting address in flash for the configuration settings struct */
 /* 512 bytes max */
@@ -247,13 +248,9 @@ void changeState(){
 }
 
 ////TASK-4
-//user timer to switch off LED or AP after 30 sec
+//user timer to switch off AP after a time delay
 Ticker APtimer;
 
-void turnLEDoff(){
-  APtimer.detach();
-  setLED(LED, LED_OFF);
-}
 void turnAPoff(){
   //turn off AP only if no clients are connected
   if (WiFi.softAPgetStationNum() == 0){
@@ -263,6 +260,11 @@ void turnAPoff(){
   }
 }
 
+//to test time delay function
+//void turnLEDoff(){
+//  APtimer.detach();
+//  setLED(LED, LED_OFF);
+//}
 
 ////TASK-5
 //(include <PubSubClient.h>)
@@ -292,6 +294,8 @@ void setup() {
   sprint(0,"BOOTING", ESP.getResetInfo());
   sprint(0,"FIRMWARE", FW_VERSION);
 
+  /* Do not store wifi settings in flash */  
+  WiFi.persistent(false);
   
   ////TASK-1:
   pinMode(LED, OUTPUT); //configure the led pin as an output.

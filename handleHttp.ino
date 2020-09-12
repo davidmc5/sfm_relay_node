@@ -12,25 +12,6 @@ void handleRoot() {
    * F(string_literal) is an arduino macro to store literal strings to flash instead of defaulting to ram
    * https://stackoverflow.com/a/39658069
    */   
-//  String Page;
-//  Page += F(
-//            "<html><head></head><font size = '50'></font><body>"
-//            "<div style='font-size:30px;'>"
-//            "<font size = \"10\"></font>"
-//            "<h1>WiFi Client Configuration!!</h1>"
-//            );
-//            
-//  if (server.client().localIP() == apIP) {
-//    Page += String(F("<p>Connected to: ")) + softAP_ssid + F("</p>"); /* Node's AP */
-//  } else {
-//    Page += String(F("<p>Connected to: ")) + cfgSettings.ap_ssid + F("</p>"); /* External AP */
-//  }
-//  Page += F(
-//            "<p><a href='/wifi'>Configuration</a>.</p>"
-//            "</body></html>"
-//            );
-//  server.send(200, "text/html", Page);
-
 }
 
 /*
@@ -85,20 +66,29 @@ void handleWifi() {
       F(
          "\r\n<br />"
          "<table>"
-            "<tr><td>SSID: "
+            "<tr><td>FW Ver: "
       )
     )+
-    String(cfgSettings.ap_ssid) +
+    FW_VERSION +
+
+    F(
+      "</td></tr>"
+      "<tr><td>SSID: "
+    )+
+    WiFi.SSID() +
+    
     F(
       "</td></tr>"
       "<tr><td>LAN: "
     )+
     toStringIp(WiFi.localIP()) +
+    
     F(
       "</td></tr>"
       "<tr><td>WAN: "
     )+
     wanIp +
+    
     F(
       "</td></tr>"
       "</table>"
@@ -110,46 +100,14 @@ void handleWifi() {
   Page += F(
             "<div>"
               "<form method='POST' action='wifisave'>"
-              "<input type='text' placeholder='ssid' name='n'/>"
-              "<br/><input type='password' placeholder='password' name='p'/>"
+              "<input type='text' placeholder='ssid' name='n' id='ssid' />"
+              "<br/><input type='password' placeholder='password' name='p' id='pswd' />"
               "<br/><input type='submit' value='Connect'/></form>"
-            "</div></body></html>"
+            "</div>"
            );
 
 
 
-  /* LAN and WLAN ssid and IP */
-//  Page +=
-//    String(F(
-//             "\r\n<br />"
-//             "<table><tr><th align='left'>SoftAP config</th></tr>"
-//             "<tr><td>SSID ")) +
-//    String(softAP_ssid) +
-//    F("</td></tr>"
-//      "<tr><td>IP ") +
-//    toStringIp(WiFi.softAPIP()) +
-//    F("</td></tr>"
-//      "</table>"
-//      "\r\n<br />"
-
-
-//      "<table><tr><th align='left'>WLAN config</th></tr>"
-//      "<tr><td>SSID ") +
-//    String(cfgSettings.ap_ssid) +
-//    F("</td></tr>"
-//      "<tr><td>IP ") +
-//    toStringIp(WiFi.localIP()) +
-//    F("</td></tr>"
-//      "</table>"
-//      "\r\n<br />"
-//      "<table><tr><th align='left'>WLAN list (refresh if any missing)</th></tr>");
-
-
-//  if (server.client().localIP() == apIP) {
-//    Page += String(F("<p>You are connected through the soft AP: ")) + softAP_ssid + F("</p>");
-//  } else {
-//    Page += String(F("<p>You are connected through the wifi network: ")) + cfgSettings.ap_ssid + F("</p>");
-//  }
 
   sprint(2, "WiFi Scan",);
   ////////////////////////////////////////
@@ -157,15 +115,56 @@ void handleWifi() {
   ////////////////////////////////////////
  
   int n = WiFi.scanNetworks();
+  //asynchronous mode //
+  //https://arduino-esp8266.readthedocs.io/en/latest/esp8266wifi/scan-examples.html
+  //int n = WiFi.scanNetworks(true);
+
+  ///////////////////////////
+
+  Page +=
+    String(
+      F(
+         "\r\n<br />"
+         "<table>"
+      )
+    );
+    
+
+
+  //////////////////////////
+  /// Page += String(F("\r\n<tr><td>")) + WiFi.SSID(i) + F("  (") + WiFi.RSSI(i) + F(")</td></tr>");
+  /// Page += String(F("\r\n<tr><td><a href='#pswd' onclick='on_click()'>")) + WiFi.SSID(i) + F("  (") + WiFi.RSSI(i) + F(")</a></td></tr>");
   
   if (n > 0) {
     for (int i = 0; i < n; i++) {
-      Page += String(F("\r\n<tr><td>SSID ")) + WiFi.SSID(i) + ((WiFi.encryptionType(i) == ENC_TYPE_NONE) ? F(" ") : F(" *")) + F(" (") + WiFi.RSSI(i) + F(")</td></tr>");
+      //http.getString().toCharArray(wanIp, len+1);
+      //WiFi.SSID(i).toCharArray(tempBuffer, WiFi.SSID(i).length()+1);
+      //sprint(2, "SSID", tempBuffer);
+      
+      Page += String(F("\r\n<tr><td><a href='#ssid'"))+
+    
+      F(
+        "\">"
+      )+ 
+             
+      WiFi.SSID(i) + 
+      F("  (") + WiFi.RSSI(i) + 
+      F(")</a></td></tr>");
     }
   } else {
     Page += F("<tr><td>No WLAN found</td></tr>");
   }
+  
+  Page +=
+  String(
+    F(
+      "</table>"
+      "\r\n<br />"
+    )
+  );
 
+/// "function on_click(clicked_ssid){document.getElementById('ssid').value = clicked_ssid}</script>"
+/// "function on_click(){document.getElementById('ssid').value='pepe'}</script>"
 ////"<p>You may want to <a href='/'>return to the home page</a>.</p>"
 
   /* Send the page to browser */
