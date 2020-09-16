@@ -104,6 +104,10 @@ void startAP(){
       http.begin("http://api.ipify.org/?format=text");  
       int httpCode = http.GET(); //Send the request
       if (httpCode > 0){
+
+        /////////////////////////////////
+        /// try sprintf(tempBuffer, "%char", http.getString());
+        ///////////////////////////////
         /* convert const String (http.getString)to const char* (wanIp) */
         http.getString().toCharArray(wanIp, http.getString().length()+1);
         sprint(2,"Public IP", wanIp);

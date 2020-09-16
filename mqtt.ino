@@ -34,14 +34,14 @@ void manageMqtt(){
           sprint(2, "MQTT Payload", wanIp);
 
 
-          /* Publish status/crash message on power up */
+          sendStatus();
 
-          /* Send first the current firmware version */
-          strcpy(mqttTopic, "status/");
-          strcat(mqttTopic, nodeId);          
-          mqttClient.publish(mqttTopic, FW_VERSION);
-          sprint(2, "MQTT Outgoing - Topic", mqttTopic); 
-          sprint(2, "MQTT Payload", FW_VERSION);
+
+          ///////////////////////////////////////////////////////////////////////////
+          ///////////////////////////////////////////////////////////////////////////
+          //try sending the restart code directly from the function without the buffer
+          ///////////////////////////////////////////////////////////////////////////
+          ///////////////////////////////////////////////////////////////////////////
           
           /* send restart reason message */
           int stringLength = ESP.getResetInfo().length();
@@ -77,8 +77,7 @@ void manageMqtt(){
 //////////GIVE length A MORE DESCRIPTIVE NAME: mqttPayloadLength
 ////////////////////////////////////////////////////////////////
 void mqttCallback(char* topic, byte* payload, unsigned int length) {
-//  char message[50]; /*  sed for requests to broker or web server */
-  
+ 
   /* Verify topic length is within limit */
   int topic_length = strlen(topic);
   if (topic_length > topic_max_length){
@@ -176,15 +175,21 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
     /* msg is the mqtt payload received and must include the webserver address, port and filename */
     sprint(2, "REQUESTED FIRMWARE UPGRADE", msg);
     t_httpUpdate_return ret = ESPhttpUpdate.update(msg);
-
-//    t_httpUpdate_return ret = ESPhttpUpdate.update( "http://10.0.0.200:8000/fw_rev_2.bin");
-
+    // t_httpUpdate_return ret = ESPhttpUpdate.update( "http://10.0.0.200:8000/fw_rev_2.bin");
     switch(ret) {
-      case HTTP_UPDATE_FAILED:
-        Serial.printf("HTTP_UPDATE_FAILED Error (%d): %s\n",  ESPhttpUpdate.getLastError(), ESPhttpUpdate.getLastErrorString().c_str());
-        break;
+    case HTTP_UPDATE_FAILED:
+      //Serial.printf("HTTP_UPDATE_FAILED Error (%d): %s\n",  ESPhttpUpdate.getLastError(), ESPhttpUpdate.getLastErrorString().c_str());
+      sprint(0, "HTTP_UPDATE_FAILED Error", ESPhttpUpdate.getLastErrorString().c_str());
+      break;
     }
   }
+
+  /* status update */
+  else if (strcmp(topics[1], "status") == 0){
+    sprint(2, "REQUESTED STATUS UPDATE", msg);
+    sendStatus();
+  }
+
 
 
 
@@ -208,4 +213,64 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
 
 } //end of callback
 
+
+
+  
+void sendStatus(){
+            /* 
+           *  
+           *send the following fields as payload
+           *fw ver
+           *ssid
+           *wanIp
+           *lanIp
+           *# AP clients
+            */
+
+          /* Firmware version */
+          strcpy(mqttPayload, FW_VERSION);          
+          strcat(mqttPayload, ":");
+
+          /* wifi ssid the node is connected to */          
+          WiFi.SSID().toCharArray(tempBuffer, WiFi.SSID().length()+1); 
+          strcat(mqttPayload, tempBuffer);
+          strcat(mqttPayload, ":");
+
+          /* wifi rssi the node is connected to */
+          //https://stackoverflow.com/a/8257728
+          sprintf(tempBuffer, "%d", WiFi.RSSI());
+          strcat(mqttPayload, tempBuffer);
+          
+          strcat(mqttPayload, ":");
+
+          sprint(2, "RSSI", WiFi.RSSI());
+
+
+          /* Node's WAN IP */
+          strcat(mqttPayload, wanIp);   
+          strcat(mqttPayload, ":");
+          
+          /*Node's LAN IP */          
+          toStringIp(WiFi.localIP()).toCharArray(tempBuffer, toStringIp(WiFi.localIP()).length()+1); 
+          strcat(mqttPayload, tempBuffer);          
+          strcat(mqttPayload, ":");
+
+          //sprint(2, "LENGTH1", strlen(mqttPayload));
+
+          
+          /* Number of clients connected to Node's Captive Portal */
+          //https://stackoverflow.com/a/22429675
+//          tempBuffer[0] = '0'+ WiFi.softAPgetStationNum(); // CASTING TO (char) IS NOT WORKING!!
+//          tempBuffer[1] = '\0'; /* null terminator to form a valid string */
+          sprintf(tempBuffer, "%d", WiFi.softAPgetStationNum());
+          strcat(mqttPayload, tempBuffer); 
+ 
+          /* Send STATUS data*/
+          strcpy(mqttTopic, "status/");
+          strcat(mqttTopic, nodeId);          
+          mqttClient.publish(mqttTopic, mqttPayload);
+          
+          sprint(2, "MQTT Outgoing - Topic", mqttTopic); 
+          sprint(2, "MQTT Payload", mqttPayload);
+}
   

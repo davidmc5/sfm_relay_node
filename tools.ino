@@ -16,7 +16,8 @@ boolean isIp(String str) {
   return true;
 }
 
-/** IP to String? */
+/** IPAddress to String? */
+/* IPAddress object is an array of 4 integers: [192, 168, 1, 1] */
 String toStringIp(IPAddress ip) {
   String res = "";
   for (int i = 0; i < 3; i++) {

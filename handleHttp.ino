@@ -76,7 +76,13 @@ void handleWifi() {
       "<tr><td>SSID: "
     )+
     WiFi.SSID() +
-    
+    F(
+      " ("
+    )+
+    WiFi.RSSI() +
+    F(
+      ")"
+    )+    
     F(
       "</td></tr>"
       "<tr><td>LAN: "

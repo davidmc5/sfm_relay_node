@@ -1,5 +1,5 @@
 
-#define FW_VERSION "1.10"
+#define FW_VERSION "1.13"
 
 //const char* fw_urlBase = "sfm10.mooo.com/fota/";
 /* 
@@ -22,7 +22,7 @@
  *    1 = ALERT & DEBUG
  *    2 = ALERT & DEBUG & INFO
 */
-#define DEBUG 2 // Print all levels. Comment this out to disable console messages on production.
+//#define DEBUG 2 // Print all levels. Comment this out to disable console messages on production.
 
 #define BAUD 9600 // Debug Serial baud rate.
 
@@ -61,6 +61,7 @@
 #include <ESP8266HTTPClient.h>
 #include <Wire.h>
 #include <ESP8266httpUpdate.h> //fota
+#include <stdio.h> //sprintf()
 
 #include "utils.h"
 #include "mqtt_brokers.h"
@@ -154,7 +155,7 @@ char *debugLevel[] = {"ALERT", "DEBUG", "INFO"};
 char *wifiStates[] = {"IDLE", "NO SSID", "2:?", "CONNECTED", "INCORRECT PASSWORD", "5:?", "DISCONNECTED"};
 unsigned int wifiStatus = WL_IDLE_STATUS; /* Set initial WiFi status to 'Not connected-Changing between status */
 
-//char tempBuffer[40]; /*used for temporary storage - handleHttp module */
+char tempBuffer[20]; /*used for strcat/strcpy and temp storage - handleHttp and mqtt modules */
 
 /* starting address in flash for the configuration settings struct */
 /* 512 bytes max */
@@ -174,6 +175,7 @@ char nodeId[18]; /* wifi MAC - this is the nodeId variable populated by the wifi
 char wanIp[20]="0.0.0.0"; /* public IP of the node. Used by controller to determine siteId on hello/ mqtt message */
 //char siteId[10]= "NEW_NODE"; //STORED IN flash - unique ID used as mqtt topic for all site nodes. Populated by initial setup or HELLO handshake.
 char clientId[20]; /* Unique client ID to connect to mqtt broker. Used by the mqtt module - mqttClient.connect()*/ 
+
 
 // DNS server
 const byte DNS_PORT = 53;
@@ -197,10 +199,12 @@ unsigned long lastConnectTry = 0;
 /* mqtt settings */
 #define topic_max_length 50
 #define maxTopics 10
-#define mqttMaxPayloadLength 50
+#define mqttMaxPayloadLength 100
 char *topics[maxTopics]; /* this array holds the pointers to each topic token. */
 char mqttTopic[topic_max_length];
+char mqttPayload[mqttMaxPayloadLength];
 char restartCode[topic_max_length];
+
 
 
 /** I2C Relay Control */
