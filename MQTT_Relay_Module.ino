@@ -1,5 +1,5 @@
 
-#define FW_VERSION "1.13"
+#define FW_VERSION "1.15"
 
 //const char* fw_urlBase = "sfm10.mooo.com/fota/";
 /* 
@@ -22,7 +22,7 @@
  *    1 = ALERT & DEBUG
  *    2 = ALERT & DEBUG & INFO
 */
-//#define DEBUG 2 // Print all levels. Comment this out to disable console messages on production.
+#define DEBUG 2 // Print all levels. Comment this out to disable console messages on production.
 
 #define BAUD 9600 // Debug Serial baud rate.
 
@@ -222,7 +222,6 @@ uint16_t relayState = 0xFFFF; //all relays off
 ////TASK-1:
 /** Control onboard LED */
 //const int LED = 2; //GPIO-2 onboard LED WEMOS-mini pro
-//const int LED = 16; //GPIO-16 ESP-WROOM
 const int LED = 12; //GPIO-12 ESP-WROOM - PWM pin
 
 const int LED_ON = 0; //active low
@@ -271,15 +270,19 @@ void turnAPoff(){
 //}
 
 ////TASK-5
-//(include <PubSubClient.h>)
+// Set up mqtt client
+//needs <PubSubClient.h>
+//Reference for multiple brokers:
+//https://github.com/knolleary/pubsubclient/issues/511
 
-//// what about the soft AP clients?
-// Declare wifi client object 
+// Create a client that can connect to a specified internet IP address and port as defined in client.connect()
+// see mqtt.ino module for mqttClient.connect()
+// see setup() function below for mqttClient.setServer()
 WiFiClient espClient;
-
-// Declare mqtt client object 
 PubSubClient mqttClient(espClient);
-
+//create a secondary client for a backup mqtt broker
+WiFiClient espClient2;
+PubSubClient mqttClient2(espClient2);
 
 
 //////////////////
@@ -335,7 +338,13 @@ void setup() {
   //Set the address and the port of the MQTT server.
   mqttClient.setServer(mqttServer, mqttPort);
   //Set the handling function that is executed when a MQTT message is received.
+  //mqttCallback function is defined on mqtt.ino module
   mqttClient.setCallback(mqttCallback);
+  /////////////////////////////////////////////
+  //Set secondary mqtt broker
+  mqttClient2.setServer(mqttServer2, mqttPort);
+  mqttClient2.setCallback(mqttCallback2);
+  
 
   
   // start softAP

@@ -3,8 +3,39 @@ void manageMqtt(){
   /* check mqtt conection status only if connected to wifi */
   if (WiFi.status() == WL_CONNECTED){
 
-    if (!mqttClient.connected()) { 
+///////////////////////////////////////////////
+
+      ///////////////////////
+        //TEST BACKUP BROKER
+        /////////////////////
+    if (!mqttClient2.connected()) { 
       
+        strcpy(clientId, "NODE-");
+        strcat(clientId, nodeId);
+        
+        if (mqttClient2.connect(clientId, mqttUser, mqttPassword )) {
+     
+          sprint(2, "Connected to MQTT Broker 2!!!!!",);
+
+          /* Subscribe to any topics for my nodeId */
+          strcpy(mqttTopic, nodeId);
+          strcat(mqttTopic, "/#");
+          mqttClient2.subscribe(mqttTopic);
+          delay(1000);
+        }
+        else {   
+          sprint(0, "Failed to Connect to BROKER 2 - State", mqttClient2.state());
+          delay(1000);   
+        }        
+    }
+    mqttClient2.loop();
+
+///////////////////////////////////////////////
+
+
+
+
+    if (!mqttClient.connected()) { 
         /* the mqttServer and callback are set in the setup() function */ 
         //https://pubsubclient.knolleary.net/api#connect
         // boolean connect (clientID, [username, password], [willTopic, willQoS, willRetain, willMessage], [cleanSession])
@@ -13,16 +44,24 @@ void manageMqtt(){
         strcpy(clientId, "NODE-");
         strcat(clientId, nodeId);
 
+  
+        //^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        /////////////////////////////////////////////////////////////////////////
+
         /* mqtt username and password are defined in the file mqtt_brokeers.h */
         if (mqttClient.connect(clientId, mqttUser, mqttPassword )) {
-       //if (mqttClient.connect("relayNode", mqttUser, mqttPassword )) {
-     
-          sprint(2, "Connected to MQTT Broker", mqttServer);
+   
+          sprint(2, "Connected to MQTT Broker 1", mqttServer);
 
           /* Subscribe to any topics for my nodeId */
           strcpy(mqttTopic, nodeId);
           strcat(mqttTopic, "/#");
+          
+          ///////////////////////////////////////
           mqttClient.subscribe(mqttTopic);
+
+          //////////////////////////////////////
+          
           //mqttClient.subscribe("#"); //subscribe to ALL FOR TESTING ONLY!
   
 
@@ -114,8 +153,10 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
 
   /* copy the received bytes from payload to a null terminated character string */
   //Declare message payload array for character string
-  //////char msg[length+1]; //add space for the null termination -- WHY THIS WORKS W/O MALLOC?
+  ////////WHY THIS EVEN WORKS W/O MALLOC given the length is not known at compile time?
+  //////char msg[length+1]; //add space for the null termination 
   char msg[mqttMaxPayloadLength]; //Payload bytes
+  
   /* convert payload bytes to a string and add null terminator */
   for (int i=0; i < length; i++){
     msg[i] = (char)payload[i];
@@ -212,6 +253,24 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
 //  }
 
 } //end of callback
+
+
+
+void mqttCallback2(char* topic, byte* payload, unsigned int length) {
+
+   /* copy the received bytes from payload to a null terminated character string */
+  //Declare message payload array for character string
+  char msg[mqttMaxPayloadLength]; //Payload bytes
+  /* convert payload bytes to a string and add null terminator */
+  for (int i=0; i < length; i++){
+    msg[i] = (char)payload[i];
+  }
+  msg[length]= NULL; /* add null termination for string */
+
+  sprint(2, "BROKER 2-TOPIC", topic);
+  sprint(2, "BROKER 2-PAYLOAD", msg);
+}
+
 
 
 
