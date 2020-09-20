@@ -1,5 +1,5 @@
 
-#define FW_VERSION "1.15"
+#define FW_VERSION "1.16"
 
 //const char* fw_urlBase = "sfm10.mooo.com/fota/";
 /* 
@@ -174,7 +174,7 @@ struct cfgSettings_s{
 char nodeId[18]; /* wifi MAC - this is the nodeId variable populated by the wifi module */
 char wanIp[20]="0.0.0.0"; /* public IP of the node. Used by controller to determine siteId on hello/ mqtt message */
 //char siteId[10]= "NEW_NODE"; //STORED IN flash - unique ID used as mqtt topic for all site nodes. Populated by initial setup or HELLO handshake.
-char clientId[20]; /* Unique client ID to connect to mqtt broker. Used by the mqtt module - mqttClient.connect()*/ 
+
 
 
 // DNS server
@@ -200,12 +200,17 @@ unsigned long lastConnectTry = 0;
 #define topic_max_length 50
 #define maxTopics 10
 #define mqttMaxPayloadLength 100
+#define mqttClientPrefix "NODE-"
 char *topics[maxTopics]; /* this array holds the pointers to each topic token. */
 char mqttTopic[topic_max_length];
 char mqttPayload[mqttMaxPayloadLength];
-char restartCode[topic_max_length];
+char mqttClientId[20]; /* Unique client ID to connect to mqtt broker. Used by the mqtt module - mqttClient.connect()*/ 
+uint8_t mqttPriFlag = 1; /* Primary mqtt broker status flag. 1=failed / 0 = OK */
+uint8_t mqttBakFlag = 1; /* Backup mqtt broker status flag. 1=failed / 0 = OK */
+uint8_t mqttBrokerState = 0; /* state machine for sending updates -- see mqtt module */
+//uint8_t mqttFirstAttempt = 1 /* if 1, this is the first time attempting to connect to any brokers (reload)*/
 
-
+char restartCode[topic_max_length]; //Buffer to collect the restart code string from esp-8266.
 
 /** I2C Relay Control */
 #define I2C_ADDR 0x27 /*Address of I2C IO expander */
@@ -278,10 +283,9 @@ void turnAPoff(){
 // Create a client that can connect to a specified internet IP address and port as defined in client.connect()
 // see mqtt.ino module for mqttClient.connect()
 // see setup() function below for mqttClient.setServer()
-WiFiClient espClient;
-PubSubClient mqttClient(espClient);
-//create a secondary client for a backup mqtt broker
-WiFiClient espClient2;
+WiFiClient espClient1; //Primary mqtt broker
+WiFiClient espClient2; //Backup mqtt broker
+PubSubClient mqttClient1(espClient1);
 PubSubClient mqttClient2(espClient2);
 
 
@@ -335,16 +339,16 @@ void setup() {
   APtimer.attach(60, turnAPoff);
 
   ////TASK-5
-  //Set the address and the port of the MQTT server.
-  mqttClient.setServer(mqttServer, mqttPort);
-  //Set the handling function that is executed when a MQTT message is received.
-  //mqttCallback function is defined on mqtt.ino module
-  mqttClient.setCallback(mqttCallback);
-  /////////////////////////////////////////////
-  //Set secondary mqtt broker
-  mqttClient2.setServer(mqttServer2, mqttPort);
+  //Set MQTT servers (mqttCallback functions are declared on mqtt.ino module
+  mqttClient1.setServer(mqttServer1, mqttPort1);  //Primary mqtt broker
+  mqttClient1.setCallback(mqttCallback1); //function executed when a MQTT message is received.
+  mqttClient2.setServer(mqttServer2, mqttPort2); //Backup mqtt broker
   mqttClient2.setCallback(mqttCallback2);
-  
+  /* set mqttclientId */
+  strcpy(mqttClientId, mqttClientPrefix);
+  strcat(mqttClientId, nodeId);
+
+
 
   
   // start softAP

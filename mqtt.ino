@@ -3,108 +3,97 @@ void manageMqtt(){
   /* check mqtt conection status only if connected to wifi */
   if (WiFi.status() == WL_CONNECTED){
 
-///////////////////////////////////////////////
+    /* Test Primary mqtt broker */
+    if (!mqttClient1.connected()) {
+      mqttPriFlag = 1; 
+      /* the mqttServer and callback are set in the setup() function TASK 5 */ 
+      //https://pubsubclient.knolleary.net/api#connect
+      // boolean connect (clientID, [username, password], [willTopic, willQoS, willRetain, willMessage], [cleanSession])
 
-      ///////////////////////
-        //TEST BACKUP BROKER
-        /////////////////////
+      /* mqtt username and password are defined in the file mqtt_brokeers.h */
+      if (mqttClient1.connect(mqttClientId, mqttUser1, mqttPassword1 )) { 
+        mqttPriFlag = 0;  
+        sprint(2, "Connected to MQTT Broker 1", mqttServer1);
+        /* set all topics (/#) for this nodeId */
+        strcpy(mqttTopic, nodeId);
+        strcat(mqttTopic, "/#");
+        mqttClient1.subscribe(mqttTopic);
+     } 
+     else {   
+        sprint(0, "Failed to Connect to MQTT Broker 1 - State", mqttClient1.state());
+        delay(2000);   
+     }
+    }    
+    mqttClient1.loop();
+
+
+
+    /* Test Backup mqtt broker */
     if (!mqttClient2.connected()) { 
-      
-        strcpy(clientId, "NODE-");
-        strcat(clientId, nodeId);
-        
-        if (mqttClient2.connect(clientId, mqttUser, mqttPassword )) {
-     
-          sprint(2, "Connected to MQTT Broker 2!!!!!",);
-
-          /* Subscribe to any topics for my nodeId */
-          strcpy(mqttTopic, nodeId);
-          strcat(mqttTopic, "/#");
-          mqttClient2.subscribe(mqttTopic);
-          delay(1000);
-        }
-        else {   
-          sprint(0, "Failed to Connect to BROKER 2 - State", mqttClient2.state());
-          delay(1000);   
-        }        
+      mqttBakFlag = 1; 
+             
+      if (mqttClient2.connect(mqttClientId, mqttUser2, mqttPassword2)) { 
+        mqttBakFlag = 0;          
+        sprint(2, "Connected to MQTT Broker 2", mqttServer2);
+        /* set all topics (/#) for this nodeId */
+        strcpy(mqttTopic, nodeId);
+        strcat(mqttTopic, "/#");
+        mqttClient2.subscribe(mqttTopic);
+      }
+      else {   
+        sprint(0, "Failed to Connect MQTT Broker 2 - State", mqttClient2.state());
+        delay(2000);   
+      }        
     }
     mqttClient2.loop();
 
-///////////////////////////////////////////////
+    switch(mqttBrokerState){
+      
+      case 0:
+        //initial state after power up send status and restart code
+        mqttBrokerState = 1; 
+        sendStatus();  /* node variables */
+        sendRestart(); /*node's restart code / crash message */
+        break;
 
 
-
-
-    if (!mqttClient.connected()) { 
-        /* the mqttServer and callback are set in the setup() function */ 
-        //https://pubsubclient.knolleary.net/api#connect
-        // boolean connect (clientID, [username, password], [willTopic, willQoS, willRetain, willMessage], [cleanSession])
-
-        /* Get unique client ID to connect to mqtt broker - use NODE-MAC ADDr */
-        strcpy(clientId, "NODE-");
-        strcat(clientId, nodeId);
-
-  
-        //^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-        /////////////////////////////////////////////////////////////////////////
-
-        /* mqtt username and password are defined in the file mqtt_brokeers.h */
-        if (mqttClient.connect(clientId, mqttUser, mqttPassword )) {
-   
-          sprint(2, "Connected to MQTT Broker 1", mqttServer);
-
-          /* Subscribe to any topics for my nodeId */
-          strcpy(mqttTopic, nodeId);
-          strcat(mqttTopic, "/#");
-          
-          ///////////////////////////////////////
-          mqttClient.subscribe(mqttTopic);
-
-          //////////////////////////////////////
-          
-          //mqttClient.subscribe("#"); //subscribe to ALL FOR TESTING ONLY!
-  
-
-          /* Publish hello message on power up */
-          strcpy(mqttTopic, "hello/");
-          strcat(mqttTopic, nodeId);          
-          mqttClient.publish(mqttTopic, wanIp); //provide wanIp
-          sprint(2, "MQTT Outgoing - Topic", mqttTopic);  
-          sprint(2, "MQTT Payload", wanIp);
-
-
-          sendStatus();
-
-
-          ///////////////////////////////////////////////////////////////////////////
-          ///////////////////////////////////////////////////////////////////////////
-          //try sending the restart code directly from the function without the buffer
-          ///////////////////////////////////////////////////////////////////////////
-          ///////////////////////////////////////////////////////////////////////////
-          
-          /* send restart reason message */
-          int stringLength = ESP.getResetInfo().length();
-          /* make sure crach string fits in the array or truncate to max length */
-          int length = (stringLength <= topic_max_length) ? stringLength : topic_max_length-1;
-          ESP.getResetInfo().toCharArray(restartCode, length+1); 
-          restartCode[length+2] = '\0'; /* add a null terminator for the string */          
-          /*build the mqtt message */
-          strcpy(mqttTopic, "status/");
-          strcat(mqttTopic, nodeId);          
-          mqttClient.publish(mqttTopic, restartCode); //send crash info
-          sprint(2, "MQTT Outgoing - Topic", mqttTopic);  
-          sprint(2, "MQTT Payload", restartCode);
-          delay(3000);
-
-       } else {   
-          sprint(0, "Failed to Connect to MQTT - State", mqttClient.state());
-          delay(5000);   
+      case 1: //Normal state - Waiting for failures
+        if (mqttPriFlag && mqttBakFlag){
+          mqttBrokerState = 2;
+          sendStatus();          
         }
+        else if(mqttPriFlag || mqttBakFlag){
+          mqttBrokerState = 3;
+          sendStatus();          
+        }
+        break;
+
+      case 2: //both brokers are down. Wait until recover
+        if (!mqttPriFlag && !mqttBakFlag){ //both brokers recovered
+          mqttBrokerState = 1;
+          sendStatus();          
+        }
+        else if(mqttPriFlag + mqttBakFlag == 1){ //only one broker recovered
+          mqttBrokerState = 3;
+          sendStatus();          
+        }
+        break;
+        
+      case 3: //one failure state. Wait until recover
+        if (!mqttPriFlag && !mqttBakFlag){ //both brokers recovered
+          mqttBrokerState = 1;
+          sendStatus();          
+        }
+        else if (mqttPriFlag && mqttBakFlag){ //both brokers down again
+          mqttBrokerState = 2;
+          sendStatus();     
+        }
+        break;        
     }
-    mqttClient.loop();
-  } else {
+  } 
+  else {
     /* not yet connected to wifi --wait a bit */
-    delay(5000);
+    delay(2000);
   }
 }
 
@@ -115,7 +104,7 @@ void manageMqtt(){
 /*This function is called when a MQTT message is received */
 //////////GIVE length A MORE DESCRIPTIVE NAME: mqttPayloadLength
 ////////////////////////////////////////////////////////////////
-void mqttCallback(char* topic, byte* payload, unsigned int length) {
+void mqttCallback1(char* topic, byte* payload, unsigned int length) {
  
   /* Verify topic length is within limit */
   int topic_length = strlen(topic);
@@ -272,64 +261,121 @@ void mqttCallback2(char* topic, byte* payload, unsigned int length) {
 }
 
 
+//This is for future use -- wanIp is already included in status message
+void sendHello(){
+  /* Publish hello message */
+  strcpy(mqttTopic, "hello/");
+  strcat(mqttTopic, nodeId);
+  
+  //////////////////////////////////////////////////////
+  //// SELECT BROKER HERE          
+  mqttClient1.publish(mqttTopic, wanIp); //provide wanIp
+  //////////////////////////////////////////////////////
+  
+  sprint(2, "MQTT Outgoing - Topic", mqttTopic);  
+  sprint(2, "MQTT Payload", wanIp);
+}
 
+
+void sendRestart(){
+  ///////////////////////////////////////////////////////////////////////////
+  //try sending the restart code directly from the function without the buffer
+  ///////////////////////////////////////////////////////////////////////////
+  
+  /* send restart reason message */
+  int stringLength = ESP.getResetInfo().length();
+  /* make sure crach string fits in the array or truncate to max length */
+  int length = (stringLength <= topic_max_length) ? stringLength : topic_max_length-1;
+  ESP.getResetInfo().toCharArray(restartCode, length+1); 
+  restartCode[length+2] = '\0'; /* add a null terminator for the string */          
+  /*build the mqtt message */
+  strcpy(mqttTopic, "status/");
+  strcat(mqttTopic, nodeId);
+
+
+ 
+/////////////////////
+
+
+  mqttClient1.publish(mqttTopic, restartCode); //send crash info
+  ////////////////////////////////////////////////
 
   
+  sprint(2, "MQTT Outgoing - Topic", mqttTopic);  
+  sprint(2, "MQTT Payload", restartCode);
+}
+
+
+
+
 void sendStatus(){
-            /* 
-           *  
-           *send the following fields as payload
-           *fw ver
-           *ssid
-           *wanIp
-           *lanIp
-           *# AP clients
-            */
+  /* 
+   *  
+   *send the following fields as payload
+   * fw ver
+   * ssid
+   * wanIp
+   * lanIp
+   * number of AP clients
+   * mqtt brokers status flags
+   */
+  
+  /* Firmware version */
+  strcpy(mqttPayload, FW_VERSION);          
+  strcat(mqttPayload, ":");
+  
+  /* wifi ssid the node is connected to */          
+  WiFi.SSID().toCharArray(tempBuffer, WiFi.SSID().length()+1); 
+  strcat(mqttPayload, tempBuffer);
+  strcat(mqttPayload, ":");
+  
+  /* wifi rssi the node is connected to */
+  //https://stackoverflow.com/a/8257728
+  sprintf(tempBuffer, "%d", WiFi.RSSI());
+  strcat(mqttPayload, tempBuffer);
+  strcat(mqttPayload, ":");
+    
+  /* Node's WAN IP */
+  strcat(mqttPayload, wanIp);   
+  strcat(mqttPayload, ":");
+  
+  /*Node's LAN IP */          
+  toStringIp(WiFi.localIP()).toCharArray(tempBuffer, toStringIp(WiFi.localIP()).length()+1); 
+  strcat(mqttPayload, tempBuffer);          
+  strcat(mqttPayload, ":");
+   
+  /* Number of clients connected to Node's Captive Portal */
+  //https://stackoverflow.com/a/22429675
+  sprintf(tempBuffer, "%d", WiFi.softAPgetStationNum());
+  strcat(mqttPayload, tempBuffer); 
+  strcat(mqttPayload, ":");
+  
+  /* mqtt primary broker status */
+  sprintf(tempBuffer, "%d", mqttPriFlag);
+  strcat(mqttPayload, tempBuffer);          
+  strcat(mqttPayload, ":");
 
-          /* Firmware version */
-          strcpy(mqttPayload, FW_VERSION);          
-          strcat(mqttPayload, ":");
-
-          /* wifi ssid the node is connected to */          
-          WiFi.SSID().toCharArray(tempBuffer, WiFi.SSID().length()+1); 
-          strcat(mqttPayload, tempBuffer);
-          strcat(mqttPayload, ":");
-
-          /* wifi rssi the node is connected to */
-          //https://stackoverflow.com/a/8257728
-          sprintf(tempBuffer, "%d", WiFi.RSSI());
-          strcat(mqttPayload, tempBuffer);
-          
-          strcat(mqttPayload, ":");
-
-          sprint(2, "RSSI", WiFi.RSSI());
-
-
-          /* Node's WAN IP */
-          strcat(mqttPayload, wanIp);   
-          strcat(mqttPayload, ":");
-          
-          /*Node's LAN IP */          
-          toStringIp(WiFi.localIP()).toCharArray(tempBuffer, toStringIp(WiFi.localIP()).length()+1); 
-          strcat(mqttPayload, tempBuffer);          
-          strcat(mqttPayload, ":");
-
-          //sprint(2, "LENGTH1", strlen(mqttPayload));
-
-          
-          /* Number of clients connected to Node's Captive Portal */
-          //https://stackoverflow.com/a/22429675
-//          tempBuffer[0] = '0'+ WiFi.softAPgetStationNum(); // CASTING TO (char) IS NOT WORKING!!
-//          tempBuffer[1] = '\0'; /* null terminator to form a valid string */
-          sprintf(tempBuffer, "%d", WiFi.softAPgetStationNum());
-          strcat(mqttPayload, tempBuffer); 
+    /* mqtt backup broker status */
+  sprintf(tempBuffer, "%d", mqttBakFlag);
+  strcat(mqttPayload, tempBuffer);     
  
-          /* Send STATUS data*/
-          strcpy(mqttTopic, "status/");
-          strcat(mqttTopic, nodeId);          
-          mqttClient.publish(mqttTopic, mqttPayload);
-          
-          sprint(2, "MQTT Outgoing - Topic", mqttTopic); 
-          sprint(2, "MQTT Payload", mqttPayload);
+  /* Send STATUS data to active broker*/
+  strcpy(mqttTopic, "status/");
+  strcat(mqttTopic, nodeId); 
+
+///////////////////////////////////////
+  //publish function (convert to macro?)
+  if (!mqttPriFlag){ /* primary mqtt broker is OK */
+    sprint(2, "MQTT BROKER - PRIMARY",);     
+    mqttClient1.publish(mqttTopic, mqttPayload);
+  }
+  else{ /* use backup broker */
+    sprint(2, "MQTT BROKER - BACKUP",);     
+    mqttClient2.publish(mqttTopic, mqttPayload);
+  }
+/////////////////////
+
+  sprint(2, "MQTT Outgoing - Topic", mqttTopic); 
+  sprint(2, "MQTT Payload", mqttPayload);
 }
   
