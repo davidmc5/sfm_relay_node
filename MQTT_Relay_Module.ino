@@ -1,5 +1,5 @@
 
-#define FW_VERSION "1.16"
+#define FW_VERSION "1.17"
 
 //const char* fw_urlBase = "sfm10.mooo.com/fota/";
 /* 
@@ -155,7 +155,6 @@ char *debugLevel[] = {"ALERT", "DEBUG", "INFO"};
 char *wifiStates[] = {"IDLE", "NO SSID", "2:?", "CONNECTED", "INCORRECT PASSWORD", "5:?", "DISCONNECTED"};
 unsigned int wifiStatus = WL_IDLE_STATUS; /* Set initial WiFi status to 'Not connected-Changing between status */
 
-char tempBuffer[20]; /*used for strcat/strcpy and temp storage - handleHttp and mqtt modules */
 
 /* starting address in flash for the configuration settings struct */
 /* 512 bytes max */
@@ -201,16 +200,16 @@ unsigned long lastConnectTry = 0;
 #define maxTopics 10
 #define mqttMaxPayloadLength 100
 #define mqttClientPrefix "NODE-"
-char *topics[maxTopics]; /* this array holds the pointers to each topic token. */
+//char *topics[maxTopics]; /* this array holds the pointers to each topic token. */
 char mqttTopic[topic_max_length];
 char mqttPayload[mqttMaxPayloadLength];
 char mqttClientId[20]; /* Unique client ID to connect to mqtt broker. Used by the mqtt module - mqttClient.connect()*/ 
 uint8_t mqttPriFlag = 1; /* Primary mqtt broker status flag. 1=failed / 0 = OK */
 uint8_t mqttBakFlag = 1; /* Backup mqtt broker status flag. 1=failed / 0 = OK */
 uint8_t mqttBrokerState = 0; /* state machine for sending updates -- see mqtt module */
-//uint8_t mqttFirstAttempt = 1 /* if 1, this is the first time attempting to connect to any brokers (reload)*/
 
-char restartCode[topic_max_length]; //Buffer to collect the restart code string from esp-8266.
+
+char tempBuffer[mqttMaxPayloadLength]; /*used for strcat/strcpy /payload and temp storage - handleHttp and mqtt modules */
 
 /** I2C Relay Control */
 #define I2C_ADDR 0x27 /*Address of I2C IO expander */
@@ -319,10 +318,11 @@ void setup() {
   //https://arduino-esp8266.readthedocs.io/en/latest/esp8266wifi/generic-examples.html
   //https://arduino-esp8266.readthedocs.io/en/latest/esp8266wifi/generic-class.html
   //Turn LED ON when client adquires IP from AP
-  gotIpEventHandler = WiFi.onStationModeGotIP([](const WiFiEventStationModeGotIP& event){
-    blinker.detach();
-    setLED(LED, LED_ON);
-  });
+  //NOTE: DISABLED SINCE WE ARE NOW TRUNING THE LED ONLY WNEN NODE IS CONNECTED TO AT LEAST ONE MQTT BROKER
+//  gotIpEventHandler = WiFi.onStationModeGotIP([](const WiFiEventStationModeGotIP& event){
+//    blinker.detach();
+//    setLED(LED, LED_ON);
+//  });
 
   /// blink led when it loses wifi
   disconnectedEventHandler = WiFi.onStationModeDisconnected([](const WiFiEventStationModeDisconnected& event){
@@ -339,11 +339,11 @@ void setup() {
   APtimer.attach(60, turnAPoff);
 
   ////TASK-5
-  //Set MQTT servers (mqttCallback functions are declared on mqtt.ino module
+  //Set MQTT servers (mqttCallback function (just one for both brokers) is declared on mqtt.ino module
   mqttClient1.setServer(mqttServer1, mqttPort1);  //Primary mqtt broker
-  mqttClient1.setCallback(mqttCallback1); //function executed when a MQTT message is received.
+  mqttClient1.setCallback(mqttCallback); //function executed when a MQTT message is received.
   mqttClient2.setServer(mqttServer2, mqttPort2); //Backup mqtt broker
-  mqttClient2.setCallback(mqttCallback2);
+  mqttClient2.setCallback(mqttCallback);
   /* set mqttclientId */
   strcpy(mqttClientId, mqttClientPrefix);
   strcat(mqttClientId, nodeId);
@@ -363,6 +363,8 @@ void setup() {
   //  setOutput(&relayState, "1", 1); // turn relay 1 on
   //  setOutput(&relayState, "1", 0); // trun relay 1 off
 
+//////////////////////
+  manageMqtt();
 } /* END OF SETUP */
 
 
@@ -387,6 +389,5 @@ void loop() {
   MDNS.update();
 
   manageMqtt();
-  
  
 } /* END OF LOOP */
