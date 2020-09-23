@@ -1,4 +1,22 @@
 
+/*
+ * Make a function to manage mqtt config settings
+ * 
+ * If firstRun, store server data from mqtt_brokers
+ * Otherwise, load flash data
+ * 
+ * Once we are connected to a pri/bak broker, if settings are different than flash, 
+ * store correct settings to flash
+ * 
+ * Make a mqtt command to change settings of pri or bak
+ * 
+ * FUTURE: if unable to connect to neither pri AND bak after a few retries,
+ * try the two standby brokers (hardcoded - can't be changed)
+ * 
+ */
+
+
+
 void manageMqtt(){
   /* check mqtt conection status only if connected to wifi */
   if (WiFi.status() == WL_CONNECTED){

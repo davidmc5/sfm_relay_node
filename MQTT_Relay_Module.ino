@@ -1,5 +1,5 @@
 
-#define FW_VERSION "1.17"
+#define FW_VERSION "1.18"
 
 //const char* fw_urlBase = "sfm10.mooo.com/fota/";
 /* 
@@ -156,16 +156,31 @@ char *wifiStates[] = {"IDLE", "NO SSID", "2:?", "CONNECTED", "INCORRECT PASSWORD
 unsigned int wifiStatus = WL_IDLE_STATUS; /* Set initial WiFi status to 'Not connected-Changing between status */
 
 
-/* starting address in flash for the configuration settings struct */
-/* 512 bytes max */
-#define cfgStartAddr 100
-struct cfgSettings_s{
-  char ap_ssid[32];
-  char ap_pswd[32];
-  char ap_ok[3];
+/* 
+ *  Configuration Settings
+ *  Max flash: 512 bytes
+ *  Reserve the first 100 bytes
+ *  Use macro SAVECFG(setting)to save a setting to flash (eeprom_utils)
+ */
+#define cfgStartAddr 100 /* Reserve the first 100 bytes of flash*/
+struct cfgSettings_s{  
+  char firstRun[3]; /* Flag for the very first time the fw loads: the eeprom has invalid data */
+  char ap_ssid[20];
+  char ap_pswd[20];
   char site_id[10]; /* Populated by initial setup or HELLO handshake */
-  char node_type[10]; /* RLY: relay / SEN: sensor / MUL: multiple*/
-  char node_chanels[20]; /* r-16;s-16 */
+  /* debug log flag */
+  char debug[5]; //s=serial, m=mqtt: s0m2 = send alerts to serial and all to mqtt
+  /* node type */
+  char node_type[20]; /* r-16;s-16 */
+  /* mqtt servers */
+  char mqttServerA[20];
+  char mqttPortA[5];
+  char mqttUserA[20];
+  char mqttPasswordA[20];
+  char mqttServerB[20];
+  char mqttPortB[5];
+  char mqttUserB[20];
+  char mqttPasswordB[20];  
 } cfgSettings;
 
 
@@ -188,10 +203,10 @@ IPAddress apIP(192, 168, 4, 1);
 IPAddress netMsk(255, 255, 255, 0);
 
 
-/** Should I connect to WLAN? */
+/** Connect to WLAN? */
 boolean connect;
 
-/** Last time I tried to connect to WLAN */
+/** Last time connected to WLAN */
 unsigned long lastConnectTry = 0;
 
 

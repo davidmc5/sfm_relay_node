@@ -32,10 +32,8 @@ void getCfgSettings(){
 void loadWifiCredentials() {
   getCfgSettings();
     
-  /* if it is the first time to connect to wifi, ignore previous eeprom contents (set to null)*/
-  //convert ap_ok to to bool ap_firstTime. WHY IS THIS NEEDED ANYWAY?
-  
-  if ( strcmp(cfgSettings.ap_ok, "OK") != 0){
+  /* if it is the first time to connect to wifi (no "OK" stored), ignore current eeprom contents */  
+  if ( strcmp(cfgSettings.firstRun, "OK") != 0){
     strcpy(cfgSettings.ap_ssid, "<no ssid>");
     strcpy(cfgSettings.ap_pswd, "<no password>");
   }
@@ -46,6 +44,6 @@ void loadWifiCredentials() {
 void saveWifiCredentials() {
   SAVECFG(ap_ssid);
   SAVECFG(ap_pswd);
-  strcpy(cfgSettings.ap_ok, "OK");
-  SAVECFG(ap_ok);
+  strcpy(cfgSettings.firstRun, "OK");
+  SAVECFG(firstRun);
 }
