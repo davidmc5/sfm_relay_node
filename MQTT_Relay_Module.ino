@@ -196,12 +196,13 @@ unsigned long lastConnectTry = 0;
 
 
 /* mqtt settings */
-#define topic_max_length 50
+#define mqttMaxTopicLength 50
 #define maxTopics 10
 #define mqttMaxPayloadLength 100
 #define mqttClientPrefix "NODE-"
-//char *topics[maxTopics]; /* this array holds the pointers to each topic token. */
-char mqttTopic[topic_max_length];
+char mqttTopic[mqttMaxTopicLength];
+char *topics[maxTopics]; /* this array holds the pointers to each topic token. */
+char rawTopic[mqttMaxTopicLength]; /* will have the same string as the given 'topic' buffer but with '/' replaced with '/0' */
 char mqttPayload[mqttMaxPayloadLength];
 char mqttClientId[20]; /* Unique client ID to connect to mqtt broker. Used by the mqtt module - mqttClient.connect()*/ 
 uint8_t mqttPriFlag = 1; /* Primary mqtt broker status flag. 1=failed / 0 = OK */
@@ -341,9 +342,9 @@ void setup() {
   ////TASK-5
   //Set MQTT servers (mqttCallback function (just one for both brokers) is declared on mqtt.ino module
   mqttClient1.setServer(mqttServer1, mqttPort1);  //Primary mqtt broker
-  mqttClient1.setCallback(mqttCallback); //function executed when a MQTT message is received.
+  mqttClient1.setCallback(mqttCallbackPri); //function executed when a MQTT message is received.
   mqttClient2.setServer(mqttServer2, mqttPort2); //Backup mqtt broker
-  mqttClient2.setCallback(mqttCallback);
+  mqttClient2.setCallback(mqttCallbackBak); //function executed when a MQTT message is received.
   /* set mqttclientId */
   strcpy(mqttClientId, mqttClientPrefix);
   strcat(mqttClientId, nodeId);
