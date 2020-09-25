@@ -1,19 +1,13 @@
 
 /*
- * Make a function to manage mqtt config settings
- * 
- * If firstRun, store server data from mqtt_brokers
- * Otherwise, load flash data
- * 
- * Once we are connected to a pri/bak broker, if settings are different than flash, 
- * store correct settings to flash
  * 
  * Make a mqtt command to change settings of pri or bak
  * 
  * FUTURE: if unable to connect to neither pri AND bak after a few retries,
- * try the two standby brokers (hardcoded - can't be changed)
+ * try the two standby brokers (hardcoded)
  * 
  */
+
 
 
 
@@ -94,7 +88,7 @@ void checkMqttBrokers(){
    *  Check if node is connected to brokers and set status flags
    *  If node is not connected, attemp reconnect
    */
-   
+
   /* Test Primary mqtt broker */
   if (!mqttClient1.connected()) {
     mqttPriFlag = 1; 
@@ -104,7 +98,8 @@ void checkMqttBrokers(){
     /* mqtt username and password are defined in the file mqtt_brokers.h */
     if (mqttClient1.connect(mqttClientId, mqttUser1, mqttPassword1 )) { 
       mqttPriFlag = 0;  
-      sprint(2, "Connected to MQTT Broker 1", mqttServer1);
+      sprint(1, "Connected to MQTT Broker 1", mqttServer1);
+      sprint(1, "MQTTCLIENTID", mqttClientId);
       /* set all topics (/#) for this nodeId */
       strcpy(mqttTopic, nodeId);
       strcat(mqttTopic, "/#");
@@ -113,13 +108,14 @@ void checkMqttBrokers(){
    else {   
       sprint(0, "Failure MQTT Broker 1 - State", mqttClient1.state());
    }
-  }
+  } /*end of Primary mqtt broker test */
   /* Test Backup mqtt broker */
   if (!mqttClient2.connected()) { 
     mqttBakFlag = 1;           
     if (mqttClient2.connect(mqttClientId, mqttUser2, mqttPassword2)) { 
       mqttBakFlag = 0;          
-      sprint(2, "Connected to MQTT Broker 2", mqttServer2);
+      sprint(1, "Connected to MQTT Broker 2", mqttServer2);
+      sprint(1, "MQTTCLIENTID", mqttClientId);
       /* subscribe all topics for this nodeId (nodeId/#) */
       strcpy(mqttTopic, nodeId);
       strcat(mqttTopic, "/#");
@@ -128,8 +124,8 @@ void checkMqttBrokers(){
     else {   
       sprint(0, "Failure MQTT Broker 2 - State", mqttClient2.state());
     }        
-  }
-}
+  } /* end of backup broker test */
+} /* end of brokers test */
 
 
 
@@ -273,10 +269,11 @@ void mqttMsgCheck(char* topic, byte* payload, unsigned int payloadLength){
 
 
 void sendRestart(){
-  /*get mqtt topic */
-  //// Using mqttTopic and mqttPayload arrays defined globally
-  ////char mqttPayload[mqttMaxPayloadLength];
-  ////char mqttTopic[mqttMaxTopicLength];
+  /*
+   * Get mqtt topic
+   * 
+   * Using mqttTopic and mqttPayload arrays defined globally
+   */
   strcpy(mqttTopic, "status/");
   strcat(mqttTopic, nodeId);
   /* get payload */

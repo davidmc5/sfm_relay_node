@@ -1,7 +1,6 @@
 
-#define FW_VERSION "1.18"
+#define FW_VERSION "1.20"
 
-//const char* fw_urlBase = "sfm10.mooo.com/fota/";
 /* 
  * To compile and upload with Arduino IDE: 
  * set the board to "Generic ESP8266 Module"
@@ -159,17 +158,27 @@ unsigned int wifiStatus = WL_IDLE_STATUS; /* Set initial WiFi status to 'Not con
 /* 
  *  Configuration Settings
  *  Max flash: 512 bytes
- *  Reserve the first 100 bytes
  *  Use macro SAVECFG(setting)to save a setting to flash (eeprom_utils)
+ *  
+ *  ITEMS TO ADD:
+ *  ADDRESS TO GET PUBLIC IP
+ *  ERROR COUNTERS TO DETECT LOOPS
+ *  
+ *  Previous settings:
+ *  
+ *  struct cfgSettings_s{  
+ *    char ap_ssid[32];
+ *    char ap_pswd[32];
+ *    char ap_ok[3];
  */
-#define cfgStartAddr 100 /* Reserve the first 100 bytes of flash*/
+#define cfgStartAddr 0
 struct cfgSettings_s{  
-  char firstRun[3]; /* Flag for the very first time the fw loads: the eeprom has invalid data */
+  char firstRun[3]; /* Flag to detect very first boot of a new device: unitialized flash memory has garbage */
   char ap_ssid[20];
   char ap_pswd[20];
   char site_id[10]; /* Populated by initial setup or HELLO handshake */
   /* debug log flag */
-  char debug[5]; //s=serial, m=mqtt: s0m2 = send alerts to serial and all to mqtt
+  char debug[5]; //s=serial, m=mqtt: example s0m2 = send 'alerts' to serial and 'all' to mqtt
   /* node type */
   char node_type[20]; /* r-16;s-16 */
   /* mqtt servers */
@@ -182,6 +191,7 @@ struct cfgSettings_s{
   char mqttUserB[20];
   char mqttPasswordB[20];  
 } cfgSettings;
+
 
 
 /* Node's info */
@@ -219,7 +229,7 @@ char mqttTopic[mqttMaxTopicLength];
 char *topics[maxTopics]; /* this array holds the pointers to each topic token. */
 char rawTopic[mqttMaxTopicLength]; /* will have the same string as the given 'topic' buffer but with '/' replaced with '/0' */
 char mqttPayload[mqttMaxPayloadLength];
-char mqttClientId[20]; /* Unique client ID to connect to mqtt broker. Used by the mqtt module - mqttClient.connect()*/ 
+char mqttClientId[20]; /* Unique client ID (clientPrefix+MAC) to connect to mqtt broker. Used by the mqtt module: mqttClient.connect()*/ 
 uint8_t mqttPriFlag = 1; /* Primary mqtt broker status flag. 1=failed / 0 = OK */
 uint8_t mqttBakFlag = 1; /* Backup mqtt broker status flag. 1=failed / 0 = OK */
 uint8_t mqttBrokerState = 0; /* state machine for sending updates -- see mqtt module */
@@ -322,6 +332,13 @@ void setup() {
 
   /* Do not store wifi settings in flash */  
   WiFi.persistent(false);
+
+/////////////////////////////////////
+  fixSettings();
+
+////////////////////////////////////
+
+  
   
   ////TASK-1:
   pinMode(LED, OUTPUT); //configure the led pin as an output.
@@ -360,10 +377,6 @@ void setup() {
   mqttClient1.setCallback(mqttCallbackPri); //function executed when a MQTT message is received.
   mqttClient2.setServer(mqttServer2, mqttPort2); //Backup mqtt broker
   mqttClient2.setCallback(mqttCallbackBak); //function executed when a MQTT message is received.
-  /* set mqttclientId */
-  strcpy(mqttClientId, mqttClientPrefix);
-  strcat(mqttClientId, nodeId);
-
 
 
   

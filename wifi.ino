@@ -68,7 +68,7 @@ void startAP(){
   if (connect) {    
     sprint(2, "WiFi Client Connect Request to", cfgSettings.ap_ssid);    
     connect = false;
-    connectWifi();
+    connectWifi(); /* connect to the stored access point */
     lastConnectTry = millis();
   }    
   unsigned int s = WiFi.status();
@@ -77,6 +77,7 @@ void startAP(){
   if (s == 0 && millis() > (lastConnectTry + 60000)) {
     connect = true;
   }
+
   if (wifiStatus != s) {
     sprint(2, "WiFi Status Changed From", wifiStates[wifiStatus]);
     sprint(2, "To WiFi Status of", wifiStates[s]);
@@ -95,6 +96,19 @@ void startAP(){
         // Add service to MDNS-SD
         MDNS.addService("http", "tcp", 80);
       }
+
+
+     /* 
+      * Set a unique client id to connect to mqtt broker (client prefix + node's mac)
+      * This assignement needs to be done after succesful connection to wifi 
+      * since we need the wifi module fully operational to query its MAC
+      * Also, it needs to be assigned before connecting to mqtt brokers
+      * If MAC is not yet populated, client IDs from differnt modules will be the same (just the common preffix)
+      * and will disconnect each other when trying to connect to a broker
+      */       
+      strcpy(mqttClientId, mqttClientPrefix);
+      strcat(mqttClientId, nodeId);
+
       
       /* get public IP */
       HTTPClient http;
@@ -130,7 +144,6 @@ void startAP(){
   sprint(2, "Connecting to WiFi AP", cfgSettings.ap_ssid);
   
   WiFi.disconnect();
-  //WiFi.begin(ssid, password);
   WiFi.begin(cfgSettings.ap_ssid, cfgSettings.ap_pswd);
   
   int connStatus = WiFi.waitForConnectResult();

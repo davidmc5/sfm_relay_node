@@ -11,7 +11,7 @@
 #define SAVECFG(M)\
   EEPROM.begin(512);  \
   /* Calculate the starting eeprom address of the given structure member M */ \
-  /* apCfgStart is the starting address of the struct in the eeprom */ \
+  /* cfgStartAddr is the starting address of the struct in the eeprom */ \
   /* offsetof(apStruct_t, M)) is the member offset from the start of the struct; */ \
   EEPROM.put(cfgStartAddr+offsetof(cfgSettings_s, M), cfgSettings.M);   \
   delay(200);\
@@ -46,4 +46,28 @@ void saveWifiCredentials() {
   SAVECFG(ap_pswd);
   strcpy(cfgSettings.firstRun, "OK");
   SAVECFG(firstRun);
+  sprint(0, "SAVING WIFI AND FIRST RUN FLAG (EEPROM_UTILS)",)
+}
+
+/*
+ * Read a null terminated string
+ * starting at an arbitrary offset (between 0 and 512)
+ * and up to a max length (if no null character found
+ * Place the string in tempBuffer array
+ */
+void readFlashString(int addr, int maxLength){
+  int i;
+  int len=0;
+  unsigned char k;
+  EEPROM.begin(512);
+  k=EEPROM.read(addr);
+  
+  while(k != '\0' && len<maxLength){   //Read until null character
+    k=EEPROM.read(addr+len);
+    tempBuffer[len]=k;
+    len++;
+  }
+  tempBuffer[len]='\0';
+  EEPROM.end();
+  yield();
 }
