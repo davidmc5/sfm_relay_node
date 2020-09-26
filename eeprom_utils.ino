@@ -57,7 +57,7 @@ void saveWifiCredentials() {
   SAVECFG(ap_pswd);
   strcpy(cfgSettings.firstRun, "OK");
   SAVECFG(firstRun);
-  sprint(1, "SAVING WIFI AND FIRST RUN FLAG (EEPROM_UTILS)",)
+  sprint(1, "SAVING WIFI AND FIRST RUN FLAG (EEPROM_UTILS)",);
 }
 
 /*

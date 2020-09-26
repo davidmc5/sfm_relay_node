@@ -1,5 +1,5 @@
 
-#define FW_VERSION "1.21"
+#define FW_VERSION "1.22"
 
 /* 
  * To compile and upload with Arduino IDE: 
@@ -21,7 +21,7 @@
  *    1 = ALERT & DEBUG
  *    2 = ALERT & DEBUG & INFO
 */
-#define DEBUG 2 // Print all levels. Comment this out to disable console messages on production.
+//#define DEBUG 2 // Print all levels. Comment this out to disable console messages on production.
 
 #define BAUD 9600 // Debug Serial baud rate.
 //#define BAUD 115200 // Debug Serial baud rate.
@@ -337,10 +337,7 @@ void setup() {
   WiFi.persistent(false);
 
 /////////////////////////////////////
-  fixSettings();
-
-//  GETCFG(ap_ssid, tempBuffer);
-//  sprint(1, "RETRIEVED JUST SSID", tempBuffer); 
+  fixSettings(); //remove after this release 1.22
 ////////////////////////////////////
 
   
