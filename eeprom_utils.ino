@@ -1,9 +1,9 @@
 /*
- * User-reserved flash is 512 bytes
+ * Flash Size of ESP-WROOM-02 is 512 bytes
  * 
- * ******************************
  */
 
+//#define cfgStartAddr 0
 
 /// Store a single arbitrary struct member M in FLASH
 //https://www.embedded.com/learn-a-new-trick-with-the-offsetof-macro/
@@ -19,10 +19,21 @@
   //Example to store the struct member 'ap_pswd': 
   //SAVECFG(ap_pswd);
   
+//IT DOES NOT WORK IF DEFINED HERE
+//MOVED IT TO TOOLS.INO
+//#define GETCFG(M)\
+//  EEPROM.begin(512);  \
+//  /* Calculate the starting eeprom address of the given structure member M */ \
+//  /* cfgStartAddr is the starting address of the struct in the eeprom */ \
+//  /* offsetof(apStruct_t, M)) is the member offset from the start of the struct; */ \
+//  EEPROM.get(cfgStartAddr+offsetof(cfgSettings_s, M), cfgSettings.M);   \
+//  delay(200);\
+//  EEPROM.end();\
+
 
 
 void getCfgSettings(){
-  /* retrievse all config settings on eeprom into cfgSettings struct in ram */
+  /* retrievse ALL config settings on eeprom into cfgSettings struct in ram */
   EEPROM.begin(512);
   EEPROM.get(cfgStartAddr, cfgSettings);
   EEPROM.end();
@@ -37,8 +48,8 @@ void loadWifiCredentials() {
     strcpy(cfgSettings.ap_ssid, "<no ssid>");
     strcpy(cfgSettings.ap_pswd, "<no password>");
   }
-  sprint(2, "Using WiFI Client Credentials for", cfgSettings.ap_ssid);
-  sprint(2, "Password", cfgSettings.ap_pswd);
+  sprint(2, "Connecting to WiFi", cfgSettings.ap_ssid);
+  //sprint(2, "Password", cfgSettings.ap_pswd);
 }
 
 void saveWifiCredentials() {
@@ -46,7 +57,7 @@ void saveWifiCredentials() {
   SAVECFG(ap_pswd);
   strcpy(cfgSettings.firstRun, "OK");
   SAVECFG(firstRun);
-  sprint(0, "SAVING WIFI AND FIRST RUN FLAG (EEPROM_UTILS)",)
+  sprint(1, "SAVING WIFI AND FIRST RUN FLAG (EEPROM_UTILS)",)
 }
 
 /*

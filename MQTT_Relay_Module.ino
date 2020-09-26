@@ -1,5 +1,5 @@
 
-#define FW_VERSION "1.20"
+#define FW_VERSION "1.21"
 
 /* 
  * To compile and upload with Arduino IDE: 
@@ -24,6 +24,7 @@
 #define DEBUG 2 // Print all levels. Comment this out to disable console messages on production.
 
 #define BAUD 9600 // Debug Serial baud rate.
+//#define BAUD 115200 // Debug Serial baud rate.
 
 /*
  * REFERENCES
@@ -64,6 +65,8 @@
 
 #include "utils.h"
 #include "mqtt_brokers.h"
+
+
 
 /*
  * STEPS
@@ -114,7 +117,7 @@
  *      
  *      
  * TODO: 
- *      - PUT THE SOFT-AP CODE AS A FUNCTION IN A SEPARATE FOLDER
+ *      - PUT THE SOFT-AP CODE IN A FUNCTION
 
          
 */
@@ -336,6 +339,8 @@ void setup() {
 /////////////////////////////////////
   fixSettings();
 
+//  GETCFG(ap_ssid, tempBuffer);
+//  sprint(1, "RETRIEVED JUST SSID", tempBuffer); 
 ////////////////////////////////////
 
   

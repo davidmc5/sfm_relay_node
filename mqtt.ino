@@ -28,7 +28,7 @@ void manageMqtt(){
         if (!mqttPriFlag || !mqttBakFlag){ //at least one broker is up
           mqttBrokerState = 1; //next state
           sendStatus();  /* Sending a status message will clear node error -> LED will stop blinking */
-          sendRestart(); /*send node's restart code (crash message) only once after boot */
+          sendRestart(); /*send node's restart code (crash message) only once after boot */       
         }
         break;
 

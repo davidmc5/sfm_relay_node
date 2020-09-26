@@ -80,21 +80,38 @@ void fixSettings(){
     int startAddr = 100;
     readFlashString(startAddr, 3);
     if (strcmp(tempBuffer, "OK")==0){
-      /* migrate firstRun flag */
-      strcpy(cfgSettings.firstRun, tempBuffer);
-      SAVECFG(firstRun);    
-      sprint(1, "SAVED-MIGRATED FIRSTRUN FLAG", tempBuffer);
+
+      ///////////////////////////////
       /* migrate ssid */
       readFlashString(startAddr+3, 20);    
       strcpy(cfgSettings.ap_ssid, tempBuffer);
-      SAVECFG(ap_ssid);    
-      sprint(1, "SAVED-MIGRATED SSID", tempBuffer);
       /* migrate pswd */
       readFlashString(startAddr+23, 20);    
       strcpy(cfgSettings.ap_pswd, tempBuffer);
-      SAVECFG(ap_pswd);
-      sprint(1, "SAVED-MIGRATED PSWD", tempBuffer);
+      saveWifiCredentials();
+
+      //////////////////////////////
+
+
+
+      
+//      /* migrate firstRun flag */
+//      strcpy(cfgSettings.firstRun, tempBuffer);
+//      SAVECFG(firstRun);    
+//      sprint(1, "SAVED-MIGRATED FIRSTRUN FLAG", tempBuffer);
+//      /* migrate ssid */
+//      readFlashString(startAddr+3, 20);    
+//      strcpy(cfgSettings.ap_ssid, tempBuffer);
+//      SAVECFG(ap_ssid);    
+//      sprint(1, "SAVED-MIGRATED SSID", tempBuffer);
+//      /* migrate pswd */
+//      readFlashString(startAddr+23, 20);    
+//      strcpy(cfgSettings.ap_pswd, tempBuffer);
+//      SAVECFG(ap_pswd);
+//      sprint(1, "SAVED-MIGRATED PSWD", tempBuffer);
+
     }
+    
     //fix for fw < 1.18
     //cfgStartAddr 100
     //char ap_ssid[32]; start addr: 100
@@ -105,21 +122,33 @@ void fixSettings(){
       startAddr = 100;
       readFlashString(startAddr+64, 3);
       if (strcmp(tempBuffer, "OK")==0){ 
-
-        /* migrate firstRun flag */
-        strcpy(cfgSettings.firstRun, tempBuffer);
-        SAVECFG(firstRun);    
-        sprint(1, "SAVED-MIGRATED FIRSTRUN FLAG", tempBuffer);
+        
+        ///////////////////////////////
         /* migrate ssid */
         readFlashString(startAddr, 32);    
         strcpy(cfgSettings.ap_ssid, tempBuffer);
-        SAVECFG(ap_ssid);    
-        sprint(1, "SAVED-MIGRATED SSID", tempBuffer);
         /* migrate pswd */
         readFlashString(startAddr+32, 32);    
         strcpy(cfgSettings.ap_pswd, tempBuffer);
-        SAVECFG(ap_pswd);
-        sprint(1, "SAVED-MIGRATED PSWD", tempBuffer);
+        saveWifiCredentials();
+  
+        //////////////////////////////
+
+
+//        /* migrate firstRun flag */
+//        strcpy(cfgSettings.firstRun, tempBuffer);
+//        SAVECFG(firstRun);    
+//        sprint(1, "SAVED-MIGRATED FIRSTRUN FLAG", tempBuffer);
+//        /* migrate ssid */
+//        readFlashString(startAddr, 32);    
+//        strcpy(cfgSettings.ap_ssid, tempBuffer);
+//        SAVECFG(ap_ssid);    
+//        sprint(1, "SAVED-MIGRATED SSID", tempBuffer);
+//        /* migrate pswd */
+//        readFlashString(startAddr+32, 32);    
+//        strcpy(cfgSettings.ap_pswd, tempBuffer);
+//        SAVECFG(ap_pswd);
+//        sprint(1, "SAVED-MIGRATED PSWD", tempBuffer);
       }
     }
   }

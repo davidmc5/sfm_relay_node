@@ -1,3 +1,18 @@
+/////////////////////////////
+//MOVE THIS DEFINITION TO A HEADER FILE WITH THE REST OF THE EEPROM TOOLS
+/////////////////////////////////////
+#define GETCFG(M, P)\
+  EEPROM.begin(512);  \
+  /* Calculate the starting eeprom address of the given structure member M */ \
+  /* cfgStartAddr is the starting address of the struct in the eeprom */ \
+  /* offsetof(apStruct_t, M)) is the member offset from the start of the struct; */ \
+  EEPROM.get(cfgStartAddr+offsetof(cfgSettings_s, M), P);   \
+  delay(200);\
+  EEPROM.end();\
+
+
+
+///////////////////////
 
 #ifdef DEBUG
   #define sprint(level, item, value) \
