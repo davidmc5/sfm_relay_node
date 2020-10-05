@@ -1,4 +1,28 @@
 
+/////////////// REFERENCES //////////////////
+//https://arduino-esp8266.readthedocs.io/en/latest/libraries.html
+//ESP.restart() restarts the CPU.
+//ESP.getFreeHeap() returns the free heap size.
+//ESP.getHeapFragmentation() returns the fragmentation metric (0% is clean, more than ~50% is not harmless)
+//ESP.getChipId() returns the ESP8266 chip ID as a 32-bit integer.
+//ESP.getFlashChipId() returns the flash chip ID as a 32-bit integer.
+//ESP.getFlashChipSize() returns the flash chip size, in bytes, as seen by the SDK (may be less than actual size).
+/*
+ * ESP.random() 
+ * should be used to generate true random numbers on the ESP. 
+ * Returns an unsigned 32-bit integer with the random number. 
+ * An alternate version is also available that fills an array of arbitrary length. 
+ * Note that it seems as though the WiFi needs to be enabled to generate entropy for the random numbers, otherwise pseudo-random numbers are used.
+ */
+
+/*
+ * ESP.checkFlashCRC() 
+ * calculates the CRC of the program memory (not including any filesystems) 
+ * and compares it to the one embedded in the image. 
+ * If this call returns false then the flash has been corrupted. 
+ */
+
+
 /*
  * 
  * Make a mqtt command to change settings of pri or bak
@@ -8,15 +32,15 @@
  * 
  */
 
-
+//////////////////////////////////////////////////////////////////////////////////
 
 
 void manageMqtt(){
   /* check mqtt conection status only if connected to wifi */
   if (WiFi.status() == WL_CONNECTED){
 
-    mqttClient1.loop();
-    mqttClient2.loop();
+    mqttClientA.loop();
+    mqttClientB.loop();
     
     /* state machine to send different messages depending on broker failures */
     switch(mqttBrokerState){ 
@@ -25,21 +49,29 @@ void manageMqtt(){
         //initial state after power up. Wait here until at least one broker is connected
         checkMqttBrokers();
        
-        if (!mqttPriFlag || !mqttBakFlag){ //at least one broker is up
+        if (!mqttStatusA || !mqttStatusB){ //at least one broker is up
           mqttBrokerState = 1; //next state
           sendStatus();  /* Sending a status message will clear node error -> LED will stop blinking */
-          sendRestart(); /*send node's restart code (crash message) only once after boot */       
-        }
+          sendRestart(); /*send node's restart code (crash message) only once after boot */ 
+          mqttErrorCounter = 0;      
+        }else{
+          /* both brokers still down */
+          mqttErrorCounter++;
+          if (mqttErrorCounter > 0){
+            loadMqttBrokerDefaults();          
+            mqttErrorCounter = 0; 
+          }
+          sprint(1, "MQTT ERROR COUNTER >>>>>>>>>>>>>", mqttErrorCounter);        
+        }        
         break;
 
       case 1: 
         //Normal state - Both brokers are up - Waiting for failures
         checkMqttBrokers(); 
-        if (mqttPriFlag && mqttBakFlag){ //both brokers are down. Can't send messages!
+        if (mqttStatusA && mqttStatusB){ //both brokers are down. Can't send messages!
           mqttBrokerState = 2; //next state
           blinker.attach(0.5, changeState); //blink LED
-        }
-        else if(mqttPriFlag || mqttBakFlag){ //only one broker down
+        }else if(mqttStatusA || mqttStatusB){ //only one broker down
           mqttBrokerState = 3;
           sendStatus();          
         }
@@ -48,30 +80,39 @@ void manageMqtt(){
       case 2: 
         //both brokers are down. Wait here until at least one recovers
         checkMqttBrokers();
-        if (!mqttPriFlag && !mqttBakFlag){ //both brokers recovered
+        if (!mqttStatusA && !mqttStatusB){ //both brokers recovered
           mqttBrokerState = 1;
+          mqttErrorCounter = 0;
           sendStatus();          
         }
-        else if(mqttPriFlag + mqttBakFlag == 1){ //only one broker recovered
+        else if(mqttStatusA + mqttStatusB == 1){ //only one broker recovered
           mqttBrokerState = 3;
+          mqttErrorCounter = 0;
           sendStatus();          
         }
+        /* both brokers still down */
+        mqttErrorCounter++;
+        if (mqttErrorCounter > 0){
+          loadMqttBrokerDefaults();
+          mqttErrorCounter = 0;          
+        }
+        sprint(1, "MQTT ERROR COUNTER >>>>>>>>>>>>>", mqttErrorCounter);        
         break;
         
       case 3: 
         // one failure state. Wait here until full recovery or both brokers fail
         // Do not check connectivity here becasue it adds too much delay for the app
         // reconnection attempts block processing mqtt messages from the connected broker
-        if (!mqttClient1.connected()) { mqttPriFlag = 1;} 
-        if (!mqttClient2.connected()) { mqttBakFlag = 1;}         
-        if (!mqttPriFlag && !mqttBakFlag){ //both brokers recovered
+        if (!mqttClientA.connected()) { mqttStatusA = 1;} 
+        if (!mqttClientB.connected()) { mqttStatusB = 1;}         
+        if (!mqttStatusA && !mqttStatusB){ //both brokers recovered
           mqttBrokerState = 1;
           sendStatus();          
-        }
-        else if (mqttPriFlag && mqttBakFlag){ //both brokers down
+        }else if (mqttStatusA && mqttStatusB){ //both brokers down
           mqttBrokerState = 2;
           blinker.attach(0.5, changeState); //blink LED
         }
+        mqttErrorCounter = 0;
         break;        
     }
   } 
@@ -82,47 +123,91 @@ void manageMqtt(){
 } /* end of manageMqtt() */
 
 
+void loadMqttBrokerDefaults(){  
+  /*
+   * Loads to the config struct the settings from mqtt_brokers file
+   */
+  /* Broker A */
+  strcpy(cfgSettings.mqttServerA, mqttServer1);
+  strcpy(cfgSettings.mqttPortA, mqttPort1);
+  strcpy(cfgSettings.mqttUserA, mqttUser1);
+  strcpy(cfgSettings.mqttPasswordA, mqttPassword1);
+  /* Broker B */
+  strcpy(cfgSettings.mqttServerB, mqttServer2);
+  strcpy(cfgSettings.mqttPortB, mqttPort2);
+  strcpy(cfgSettings.mqttUserB, mqttUser2);
+  strcpy(cfgSettings.mqttPasswordB, mqttPassword2);
+  sprint(0,"LOADED MQTT BROKER DEFAULTS",);
+}
+
+
 
 void checkMqttBrokers(){
   /* 
    *  Check if node is connected to brokers and set status flags
    *  If node is not connected, attemp reconnect
    */
-
   /* Test Primary mqtt broker */
-  if (!mqttClient1.connected()) {
-    mqttPriFlag = 1; 
+  if (!mqttClientA.connected()) {
+    mqttStatusA = 1; 
     /* the mqttServer and callback are set in the setup() function TASK 5 */ 
     //https://pubsubclient.knolleary.net/api#connect
     // boolean connect (clientID, [username, password], [willTopic, willQoS, willRetain, willMessage], [cleanSession])  
     /* mqtt username and password are defined in the file mqtt_brokers.h */
-    if (mqttClient1.connect(mqttClientId, mqttUser1, mqttPassword1 )) { 
-      mqttPriFlag = 0;  
-      sprint(1, "Connected to MQTT Broker 1", mqttServer1);
-      sprint(1, "MQTTCLIENTID", mqttClientId);
-      /* set all topics (/#) for this nodeId */
+    
+    ////////////////////
+    sprint(1, "Using mqttUserA", cfgSettings.mqttUserA);
+    sprint(1, "Using mqttPasswordA", cfgSettings.mqttPasswordA);
+    ////////////////////
+
+    mqttClientA.setServer(cfgSettings.mqttServerA, atoi(cfgSettings.mqttPortA));  //Primary mqtt broker
+    mqttClientA.setCallback(mqttCallbackA); //function executed when a MQTT message is received.
+
+    if (mqttClientA.connect(mqttClientId, cfgSettings.mqttUserA, cfgSettings.mqttPasswordA )) { 
+      mqttStatusA = 0;  
+      sprint(1, "Connected to MQTT Broker 1", cfgSettings.mqttServerA);
+      //sprint(1, "MQTTCLIENTID", mqttClientId);
+      /* Subscribe to all topics (/#) prefixed by this nodeId */
       strcpy(mqttTopic, nodeId);
       strcat(mqttTopic, "/#");
-      mqttClient1.subscribe(mqttTopic);
+      mqttClientA.subscribe(mqttTopic);
+
+      //////////
+      // if any ram mqtt parameters are different on flash, store them
+      
+      /////////////////////
+//      readFlashString(58, 20);
+//      sprint(1, "NODE TYPE", tempBuffer);
+      ////////////////////
+      
+      saveSettings();      
    } 
    else {   
-      sprint(0, "Failure MQTT Broker 1 - State", mqttClient1.state());
+      sprint(0, "Failure MQTT Broker 1 - State", mqttClientA.state());
    }
   } /*end of Primary mqtt broker test */
   /* Test Backup mqtt broker */
-  if (!mqttClient2.connected()) { 
-    mqttBakFlag = 1;           
-    if (mqttClient2.connect(mqttClientId, mqttUser2, mqttPassword2)) { 
-      mqttBakFlag = 0;          
-      sprint(1, "Connected to MQTT Broker 2", mqttServer2);
-      sprint(1, "MQTTCLIENTID", mqttClientId);
+  if (!mqttClientB.connected()) { 
+    mqttStatusB = 1;   
+     
+    mqttClientB.setServer(cfgSettings.mqttServerB, atoi(cfgSettings.mqttPortB)); //Backup mqtt broker
+    mqttClientB.setCallback(mqttCallbackB); //function executed when a MQTT message is received. 
+          
+    if (mqttClientB.connect(mqttClientId, cfgSettings.mqttUserB, cfgSettings.mqttPasswordB)) { 
+      mqttStatusB = 0;          
+      sprint(1, "Connected to MQTT Broker 2", cfgSettings.mqttServerB);
+      //sprint(1, "MQTTCLIENTID", mqttClientId);
       /* subscribe all topics for this nodeId (nodeId/#) */
       strcpy(mqttTopic, nodeId);
       strcat(mqttTopic, "/#");
-      mqttClient2.subscribe(mqttTopic);
+      mqttClientB.subscribe(mqttTopic);
+      //////////
+      // if any mqtt parameters different on flash, store them
+      
+      saveSettings();
     }
     else {   
-      sprint(0, "Failure MQTT Broker 2 - State", mqttClient2.state());
+      sprint(0, "Failure MQTT Broker 2 - State", mqttClientB.state());
     }        
   } /* end of backup broker test */
 } /* end of brokers test */
@@ -132,16 +217,14 @@ void checkMqttBrokers(){
 ///MQTT CALLBACKS
 
 /* wrappers to include the primary or backup identifiers to the received messages */
-void mqttCallbackPri(char* topic, byte* payload, unsigned int length){
+void mqttCallbackA(char* topic, byte* payload, unsigned int length){
   mqttCallback("PRI", topic, payload, length);
 }
-void mqttCallbackBak(char* topic, byte* payload, unsigned int length){
+void mqttCallbackB(char* topic, byte* payload, unsigned int length){
   mqttCallback("BAK", topic, payload, length);
 }
 
-/* This function is called when MQTT messages from either broker for this nodeid are received */
-
-//void mqttCallback(char* topic, byte* payload, unsigned int length) {
+/* Function is called when MQTT messages from either broker for this nodeid are received */
 void mqttCallback(char* broker, char* topic, byte* payload, unsigned int length) {
   mqttMsgCheck(topic, payload, length); /* print a debub message if topic or payload strings are longer than buffers */
   /* copy the received bytes from payload to mqttPayload array */
@@ -152,9 +235,7 @@ void mqttCallback(char* broker, char* topic, byte* payload, unsigned int length)
   
   sprint(2, "MQTT BROKER", broker);  
   sprint(2, "MQTT Incomming - Topic", topic);  
-  sprint(2, "MQTT Payload", mqttPayload);
-
-  
+  sprint(2, "MQTT Payload", mqttPayload);  
   /* 
    *  Parse received mqtt topic into an array of pointers
    *  
@@ -183,24 +264,22 @@ void mqttCallback(char* broker, char* topic, byte* payload, unsigned int length)
       rawTopic[i] = topic[i];
     }
   }
-
-
   /*
    * ADD BELOW THE MQTT COMMANDS FOR THE NODE
-   */
-      
-
+   * ////////////////////////////////////////
+   */   
   /* 
    *  RELAY CONTROL
+   *  /////////////
    *  Turn a relay on or off
    */
   if(strcmp(topics[1], "relay") == 0){ 
     int relayAction = (payload[0]-'0'); //Convert to integer. 0=off, 1=on   
     setOutput(&relayState, topics[2], relayAction); //topics[2] is the relay#
   }
-
   /* 
    *  FIRMWARE UPDATES
+   *  ////////////////
    *  Initiate a firmware upgrade. 
    *  The node will reboot and send a status update when done
    */
@@ -217,6 +296,7 @@ void mqttCallback(char* broker, char* topic, byte* payload, unsigned int length)
   }
   /*
    *  STATUS UPDATE
+   *  /////////////
    *  Send a status update to the controller
    *  If payload is set to "1", try to reconnect to the failed broker 
    */
@@ -271,7 +351,6 @@ void mqttMsgCheck(char* topic, byte* payload, unsigned int payloadLength){
 void sendRestart(){
   /*
    * Get mqtt topic
-   * 
    * Using mqttTopic and mqttPayload arrays defined globally
    */
   strcpy(mqttTopic, "status/");
@@ -283,11 +362,13 @@ void sendRestart(){
 }
 
 
-
+/////////////////////////////////////////////
+//THIS FUNCTION NEEDS A CHECK TO PREVENT mqttPayload BUFFER OVERRUN 
+// WE ARE CONCATENATING A NUMBER OF STRINGS THAT COULD EXCEED THE SIZE OF THE BUFFER
+////////////////////////////////////////////////////////////
 
 void sendStatus(){
   /* 
-   *  
    *send the following fields as payload
    * fw ver
    * ssid
@@ -334,12 +415,12 @@ void sendStatus(){
   strcat(mqttPayload, ":");
   
   /* add mqtt primary broker status flag */
-  sprintf(tempBuffer, "%d", mqttPriFlag);
+  sprintf(tempBuffer, "%d", mqttStatusA);
   strcat(mqttPayload, tempBuffer);          
   strcat(mqttPayload, ":");
 
    /* add mqtt backup broker status flag */
-  sprintf(tempBuffer, "%d", mqttBakFlag);
+  sprintf(tempBuffer, "%d", mqttStatusB);
   strcat(mqttPayload, tempBuffer);     
  
   /* format mqtt topic */
@@ -352,13 +433,13 @@ void sendStatus(){
 
 void sendMqttMsg(char * mqttTopic, char * mqttPayload){
   /* publish function to active broker */
-  if (!mqttPriFlag){ /* primary mqtt broker is OK */
+  if (!mqttStatusA){ /* primary mqtt broker is OK */
     sprint(2, "MQTT BROKER - PRIMARY",);     
-    mqttClient1.publish(mqttTopic, mqttPayload);
+    mqttClientA.publish(mqttTopic, mqttPayload);
   }
   else{ /* use backup broker */
     sprint(2, "MQTT BROKER - BACKUP",);     
-    mqttClient2.publish(mqttTopic, mqttPayload);
+    mqttClientB.publish(mqttTopic, mqttPayload);
   }
   sprint(2, "MQTT Outgoing - Topic", mqttTopic); 
   sprint(2, "MQTT Payload", mqttPayload);

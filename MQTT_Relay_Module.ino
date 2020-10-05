@@ -1,5 +1,5 @@
 
-#define FW_VERSION "1.22"
+#define FW_VERSION "1.24"
 
 /* 
  * To compile and upload with Arduino IDE: 
@@ -21,7 +21,7 @@
  *    1 = ALERT & DEBUG
  *    2 = ALERT & DEBUG & INFO
 */
-//#define DEBUG 2 // Print all levels. Comment this out to disable console messages on production.
+#define DEBUG 1 // Print all levels. Comment this out to disable console messages on production.
 
 #define BAUD 9600 // Debug Serial baud rate.
 //#define BAUD 115200 // Debug Serial baud rate.
@@ -65,6 +65,7 @@
 
 #include "utils.h"
 #include "mqtt_brokers.h"
+#include "settings.h"
 
 
 
@@ -157,46 +158,6 @@ char *debugLevel[] = {"ALERT", "DEBUG", "INFO"};
 char *wifiStates[] = {"IDLE", "NO SSID", "2:?", "CONNECTED", "INCORRECT PASSWORD", "5:?", "DISCONNECTED"};
 unsigned int wifiStatus = WL_IDLE_STATUS; /* Set initial WiFi status to 'Not connected-Changing between status */
 
-
-/* 
- *  Configuration Settings
- *  Max flash: 512 bytes
- *  Use macro SAVECFG(setting)to save a setting to flash (eeprom_utils)
- *  
- *  ITEMS TO ADD:
- *  ADDRESS TO GET PUBLIC IP
- *  ERROR COUNTERS TO DETECT LOOPS
- *  
- *  Previous settings:
- *  
- *  struct cfgSettings_s{  
- *    char ap_ssid[32];
- *    char ap_pswd[32];
- *    char ap_ok[3];
- */
-#define cfgStartAddr 0
-struct cfgSettings_s{  
-  char firstRun[3]; /* Flag to detect very first boot of a new device: unitialized flash memory has garbage */
-  char ap_ssid[20];
-  char ap_pswd[20];
-  char site_id[10]; /* Populated by initial setup or HELLO handshake */
-  /* debug log flag */
-  char debug[5]; //s=serial, m=mqtt: example s0m2 = send 'alerts' to serial and 'all' to mqtt
-  /* node type */
-  char node_type[20]; /* r-16;s-16 */
-  /* mqtt servers */
-  char mqttServerA[20];
-  char mqttPortA[5];
-  char mqttUserA[20];
-  char mqttPasswordA[20];
-  char mqttServerB[20];
-  char mqttPortB[5];
-  char mqttUserB[20];
-  char mqttPasswordB[20];  
-} cfgSettings;
-
-
-
 /* Node's info */
 char nodeId[18]; /* wifi MAC - this is the nodeId variable populated by the wifi module */
 char wanIp[20]="0.0.0.0"; /* public IP of the node. Used by controller to determine siteId on hello/ mqtt message */
@@ -233,9 +194,10 @@ char *topics[maxTopics]; /* this array holds the pointers to each topic token. *
 char rawTopic[mqttMaxTopicLength]; /* will have the same string as the given 'topic' buffer but with '/' replaced with '/0' */
 char mqttPayload[mqttMaxPayloadLength];
 char mqttClientId[20]; /* Unique client ID (clientPrefix+MAC) to connect to mqtt broker. Used by the mqtt module: mqttClient.connect()*/ 
-uint8_t mqttPriFlag = 1; /* Primary mqtt broker status flag. 1=failed / 0 = OK */
-uint8_t mqttBakFlag = 1; /* Backup mqtt broker status flag. 1=failed / 0 = OK */
+uint8_t mqttStatusA = 1; /* Primary mqtt broker status flag. 1=failed / 0 = OK */
+uint8_t mqttStatusB = 1; /* Backup mqtt broker status flag. 1=failed / 0 = OK */
 uint8_t mqttBrokerState = 0; /* state machine for sending updates -- see mqtt module */
+uint8_t mqttErrorCounter = 0; /* used to reset mqtt broker settings to defaults */
 
 
 char tempBuffer[mqttMaxPayloadLength]; /*used for strcat/strcpy /payload and temp storage - handleHttp and mqtt modules */
@@ -311,10 +273,10 @@ void turnAPoff(){
 // Create a client that can connect to a specified internet IP address and port as defined in client.connect()
 // see mqtt.ino module for mqttClient.connect()
 // see setup() function below for mqttClient.setServer()
-WiFiClient espClient1; //Primary mqtt broker
-WiFiClient espClient2; //Backup mqtt broker
-PubSubClient mqttClient1(espClient1);
-PubSubClient mqttClient2(espClient2);
+WiFiClient espClientA; //Primary mqtt broker
+WiFiClient espClientB; //Backup mqtt broker
+PubSubClient mqttClientA(espClientA);
+PubSubClient mqttClientB(espClientB);
 
 
 //////////////////
@@ -338,6 +300,12 @@ void setup() {
 
 /////////////////////////////////////
   fixSettings(); //remove after this release 1.22
+//  strcpy(cfgSettings.mqttUserB, "Hello!");
+//  strcpy(cfgSettings.mqttPasswordB, "Goodbye!");
+//  SAVECFG(mqttUserB);
+//  SAVECFG(mqttPasswordB);
+
+  //saveSettings();
 ////////////////////////////////////
 
   
@@ -374,11 +342,12 @@ void setup() {
   APtimer.attach(60, turnAPoff);
 
   ////TASK-5
-  //Set MQTT servers (mqttCallback function (just one for both brokers) is declared on mqtt.ino module
-  mqttClient1.setServer(mqttServer1, mqttPort1);  //Primary mqtt broker
-  mqttClient1.setCallback(mqttCallbackPri); //function executed when a MQTT message is received.
-  mqttClient2.setServer(mqttServer2, mqttPort2); //Backup mqtt broker
-  mqttClient2.setCallback(mqttCallbackBak); //function executed when a MQTT message is received.
+  /// MOVED TO MQTT.INO
+//  //Set MQTT servers (mqttCallback function (just one for both brokers) is declared on mqtt.ino module
+//  mqttClientA.setServer(cfgSettings.mqttServerA, cfgSettings.mqttPortA);  //Primary mqtt broker
+//  mqttClientA.setCallback(mqttCallbackA); //function executed when a MQTT message is received.
+//  mqttClientB.setServer(cfgSettings.mqttServerB, cfgSettings.mqttPortB); //Backup mqtt broker
+//  mqttClientB.setCallback(mqttCallbackB); //function executed when a MQTT message is received.
 
 
   
@@ -394,8 +363,13 @@ void setup() {
   //  setOutput(&relayState, "1", 1); // turn relay 1 on
   //  setOutput(&relayState, "1", 0); // trun relay 1 off
 
-//////////////////////
   manageMqtt();
+
+///////////////////////// TESTING
+  //getOffsets();
+
+
+  
 } /* END OF SETUP */
 
 
