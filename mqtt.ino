@@ -13,26 +13,16 @@
  * Returns an unsigned 32-bit integer with the random number. 
  * An alternate version is also available that fills an array of arbitrary length. 
  * Note that it seems as though the WiFi needs to be enabled to generate entropy for the random numbers, otherwise pseudo-random numbers are used.
- */
-
-/*
+ *
  * ESP.checkFlashCRC() 
  * calculates the CRC of the program memory (not including any filesystems) 
  * and compares it to the one embedded in the image. 
  * If this call returns false then the flash has been corrupted. 
- */
-
-
-/*
- * 
- * Make a mqtt command to change settings of pri or bak
  * 
  * FUTURE: if unable to connect to neither pri AND bak after a few retries,
  * try the two standby brokers (hardcoded)
  * 
  */
-
-//////////////////////////////////////////////////////////////////////////////////
 
 
 void manageMqtt(){
@@ -42,7 +32,13 @@ void manageMqtt(){
     mqttClientA.loop();
     mqttClientB.loop();
     
-    /* state machine to send different messages depending on broker failures */
+    /* 
+     *  state machine to send different messages depending on broker failures
+     *  If both brokers are down, try to reconnect to both
+     *  After a few unsuccesful retries, try default brokers
+     *  If only one broker is down, don't try to recover to avoid the few seconds delay
+     *  Only send status changes once.
+     */
     switch(mqttBrokerState){ 
       
       case 0: 
@@ -307,6 +303,7 @@ void mqttCallback(char* broker, char* topic, byte* payload, unsigned int length)
       checkMqttBrokers();
     }
     sendStatus();
+    sendConfig();
   }
   /*
    * SETTINGS
@@ -348,6 +345,7 @@ void mqttCallback(char* broker, char* topic, byte* payload, unsigned int length)
 
 
 void setSetting(char* setting, char* value){
+  /* store the give setting value in flash */
   settingsRamPtr = &cfgSettings; // set the struct pointer to the address of the Ram struct  
   char *structRamBase = (char *)settingsRamPtr; //cast the base ram as a pointer to char
   for (int i=0; i< NUM_ELEMS(field); i++){
@@ -464,6 +462,54 @@ void sendStatus(){
   /* publish mqtt message to active broker */
   sendMqttMsg(mqttTopic, mqttPayload);
 }
+
+void sendConfig(){  
+  /*
+   * Publish all the current configuration settings
+   * Iterate through each of the config struct fields 
+   * and publish a mqtt message for each
+   * If the current flash and ram values differ, send both
+   */
+  /* read values from flash */ 
+  EEPROM.begin(512);
+  EEPROM.get(cfgStartAddr, cfgSettingsTemp);  
+  /* get the pointers to both flash and ram structs */
+  settingsRamPtr = &cfgSettings; // set the struct pointer to the address of the Ram struct
+  settingsFlashPtr = &cfgSettingsTemp; // set the struct pointer to the address of the FLASH struct
+  char *structRamBase = (char *)settingsRamPtr; //cast the base ram as a pointer to char 
+  char *structFlashBase = (char *)settingsFlashPtr; ////cast the base flash as a pointer to char
+  
+  /* set the mqtt topic */
+  strcpy(mqttTopic, "status/"); //// WE MIGHT WANT TO CHANGE THE TOPIC TO 'SETTINGS' INSTEAD
+  strcat(mqttTopic, nodeId); 
+
+  /* iterate the struct fields and publish an mqtt message for each */
+  for (int i=0; i< NUM_ELEMS(field); i++){
+    if (strcmp(structRamBase+field[i].offset, structFlashBase+field[i].offset) == 0){
+        sprint(1, field[i].name, structRamBase+field[i].offset);
+        
+        /* format payload */
+        strcpy(mqttPayload, field[i].name);          
+        strcat(mqttPayload, ":");
+        strcat(mqttPayload, structRamBase+field[i].offset);
+     }else{
+        /* active config is different than flash. Send both */
+        /* format payload */
+        strcpy(mqttPayload, "*");  /* flag to highlight the log */        
+        strcat(mqttPayload, field[i].name);          
+        strcat(mqttPayload, ":");
+        strcat(mqttPayload, structRamBase+field[i].offset);
+        strcat(mqttPayload, ":");
+        strcat(mqttPayload, structFlashBase+field[i].offset);      
+     }
+     /* publish mqtt message to active broker */
+     sendMqttMsg(mqttTopic, mqttPayload);
+     yield();
+  }
+  EEPROM.end();
+}
+
+
 
 void sendMqttMsg(char * mqttTopic, char * mqttPayload){
   /* publish function to active broker */
