@@ -274,7 +274,7 @@ void mqttCallback(char* broker, char* topic, byte* payload, unsigned int length)
    *  Turn a relay on or off
    */
   if(strcmp(topics[1], "relay") == 0){ 
-    int relayAction = (payload[0]-'0'); //Convert to integer. 0=off, 1=on   
+    int relayAction = (mqttPayload[0]-'0'); //Convert to integer. 0=off, 1=on   
     setOutput(&relayState, topics[2], relayAction); //topics[2] is the relay#
   }
   /* 
@@ -302,17 +302,33 @@ void mqttCallback(char* broker, char* topic, byte* payload, unsigned int length)
    */
    else if (strcmp(topics[1], "status") == 0){
     sprint(2, "REQUESTED STATUS UPDATE", mqttPayload);
-    if ((payload[0]-'0') == 1){
+    if ((mqttPayload[0]-'0') == 1){
       sprint(2, "Resetting MQTT Connections", payload[0]-'0');
       checkMqttBrokers();
     }
     sendStatus();
   }
+  /*
+   * SETTINGS
+   * ////////
+   * 
+   * if no payload (query), send back the current setting
+   * If there is a payload (set request), store the setting in flash and send confirmation
+   */
+   else if (strcmp(topics[1], "setting") == 0){
+    if (strlen(mqttPayload)== 0){
+      sprint(1, "topics[2]=", topics[2]);
+    }else{ /* set setting to payload value*/
+      sprint(1, topics[2], mqttPayload);
+      setSetting(topics[2], mqttPayload);
+    }
+   }
 
 
   /////////////////////////////////
   //// TO RESEARCH
   // THE CODE BELOW CAUSES A CRASH!
+  // use it to test crash recovery
   /////////////////////////////////
   //  if ( strcmp(cmdType, "relay") == 0  ){
   //    ////the following statement causes a crash because the parenthesis is in the wrong place
@@ -331,6 +347,22 @@ void mqttCallback(char* broker, char* topic, byte* payload, unsigned int length)
 } //end of callback
 
 
+void setSetting(char* setting, char* value){
+  settingsRamPtr = &cfgSettings; // set the struct pointer to the address of the Ram struct  
+  char *structRamBase = (char *)settingsRamPtr; //cast the base ram as a pointer to char
+  for (int i=0; i< NUM_ELEMS(field); i++){
+    if (strcmp(field[i].name, setting) == 0){
+      sprint(1, "CURRENT SETTING VALUE", structRamBase+field[i].offset);      
+      stringCopy(structRamBase+field[i].offset, value, field[i].size);
+      EEPROM.begin(512);
+      updateFlashField(structRamBase+field[i].offset, cfgStartAddr+field[i].offset, field[i].size);
+      EEPROM.end();
+      yield();
+      sendStatus();
+      break;     
+    }
+  }
+}
 
 void mqttMsgCheck(char* topic, byte* payload, unsigned int payloadLength){  
   /* Verify topic length of the message received is within limits */
@@ -350,7 +382,7 @@ void mqttMsgCheck(char* topic, byte* payload, unsigned int payloadLength){
 
 void sendRestart(){
   /*
-   * Get mqtt topic
+   * Publish the last restart code (normal/crash, etc)
    * Using mqttTopic and mqttPayload arrays defined globally
    */
   strcpy(mqttTopic, "status/");
@@ -370,6 +402,8 @@ void sendRestart(){
 void sendStatus(){
   /* 
    *send the following fields as payload
+   *separated by ':'
+   *
    * fw ver
    * ssid
    * wanIp

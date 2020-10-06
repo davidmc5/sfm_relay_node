@@ -34,14 +34,13 @@ struct cfgSettings_s{
   char mqttUserB[20];     /* offset= 170 */
   char mqttPasswordB[20]; /* offset= 190 */
 };
-/////////// CHANGE TO settingsRam and settingsFlash
+/////////// CHANGE TO Settings_s, settingsRam and settingsFlash
 ///////////////////////////////////////////////////
 struct cfgSettings_s cfgSettings, cfgSettingsTemp; 
 struct cfgSettings_s *settingsRamPtr, *settingsFlashPtr; //pointers to structures
 
-
 /*
- * The following array of structs is used to obtain field offset and size
+ * The following array of structs is used to obtain a field's name, offset and size
  * to detect and prevent buffer overruns
  * 
  * THIS COULD BE SIMPLIED BY USING X_MACROS

@@ -1,5 +1,5 @@
 
-#define FW_VERSION "1.24"
+#define FW_VERSION "1.25"
 
 /* 
  * To compile and upload with Arduino IDE: 
