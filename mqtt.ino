@@ -24,6 +24,7 @@
  * 
  */
 
+
 /* 
  *  manageMqtt()
  *  Implements and update a state machine to monitor brokers
@@ -48,6 +49,7 @@ void manageMqtt(){
           mqttBrokerState = 1; //next state
           sendStatus();  /* Sending a status message will clear node error -> LED will stop blinking */
           sendRestart(); /*send node's restart code (crash message) only once after boot */ 
+          sendState();
           mqttErrorCounter = 0;      
         }else{
           /* both brokers still down */
@@ -136,6 +138,8 @@ void loadMqttBrokerDefaults(){
   sprint(0,"LOADED MQTT BROKER DEFAULTS",);
 }
 
+
+
 /* 
  *  checkMqttBrokers() checks if node is connected to brokers and set status flags
  *  If node is not connected, attemp reconnect
@@ -151,8 +155,16 @@ void checkMqttBrokers(){
 
     mqttClientA.setServer(cfgSettings.mqttServerA, atoi(cfgSettings.mqttPortA));  //Primary mqtt broker
     mqttClientA.setCallback(mqttCallbackA); //function executed when a MQTT message is received.
-
-    if (mqttClientA.connect(mqttClientId, cfgSettings.mqttUserA, cfgSettings.mqttPasswordA )) { 
+    /*
+     * Connect with a last will message payload set to 0 (false: not connected) and retained
+     * boolean connect (clientID, [username, password], [willTopic, willQoS, willRetain, willMessage], [cleanSession])
+     * https://pubsubclient.knolleary.net/api#connect
+     */
+    /* Set last will topic */
+    strcpy(mqttTopic, "status/");
+    strcat(mqttTopic, nodeId);
+    strcat(mqttTopic, "/state/");
+    if (mqttClientA.connect(mqttClientId, cfgSettings.mqttUserA, cfgSettings.mqttPasswordA, mqttTopic, 0, true, "0" )) { 
       mqttStatusA = 0;  
       sprint(1, "Connected to MQTT Broker 1", cfgSettings.mqttServerA);
       //sprint(1, "MQTTCLIENTID", mqttClientId);
@@ -171,8 +183,12 @@ void checkMqttBrokers(){
      
     mqttClientB.setServer(cfgSettings.mqttServerB, atoi(cfgSettings.mqttPortB)); //Backup mqtt broker
     mqttClientB.setCallback(mqttCallbackB); //function executed when a MQTT message is received. 
-          
-    if (mqttClientB.connect(mqttClientId, cfgSettings.mqttUserB, cfgSettings.mqttPasswordB)) { 
+    /* Set last will topic */
+    strcpy(mqttTopic, "status/");
+    strcat(mqttTopic, nodeId);
+    strcat(mqttTopic, "/state/");
+    
+    if (mqttClientB.connect(mqttClientId, cfgSettings.mqttUserB, cfgSettings.mqttPasswordB, mqttTopic, 0, true, "0" )) { 
       mqttStatusB = 0;          
       sprint(1, "Connected to MQTT Broker 2", cfgSettings.mqttServerB);
       //sprint(1, "MQTTCLIENTID", mqttClientId);
@@ -334,6 +350,7 @@ void mqttCallback(char* broker, char* topic, byte* payload, unsigned int length)
 
 } //end of callback
 
+
 /*
  *   setSetting()
  *   store the given setting value in flash
@@ -386,14 +403,35 @@ void sendRestart(){
   sendMqttMsg(mqttTopic, mqttPayload);
 }
 
+////THIS MIGHT JUST BE NEEDED FOR GRACEFUL DISCONNECTS
+///SEE 
+///boolean connect (clientID, [username, password], [willTopic, willQoS, willRetain, willMessage], [cleanSession])
+/*
+ * sendState()
+ * send a connect/online message (payload = 1) on boot
+ * (see state 0 of state machine of manageMqtt)
+ * FUTURE USE: send a graceful disconnect message (payload=0)
+ * (to avoid sending last will)
+ * See checkMqttBrokers() for last will connect message
+ */
+ void sendState(){
+  /* publish the initial State topic with the retained flag*/
+  /* Set state topic */
+  strcpy(mqttTopic, "status/");
+  strcat(mqttTopic, nodeId);
+  strcat(mqttTopic, "/state/");
+  /* Set message payload */  
+  strcpy(mqttPayload, "1");
+  /* publish state topic */
+  sendMqttMsg(mqttTopic, mqttPayload, true);
+  
+         
+ }
 
 /////////////////////////////////////////////
 //THIS FUNCTION NEEDS A CHECK TO PREVENT mqttPayload BUFFER OVERRUN 
 // WE ARE CONCATENATING A NUMBER OF STRINGS THAT COULD EXCEED THE SIZE OF THE BUFFER
 ////////////////////////////////////////////////////////////
-
-
-
 /* 
  * sendStatus()
  * sends the following fields as payload separated by ':'
@@ -457,6 +495,10 @@ void sendStatus(){
   
   /* publish mqtt message to active broker */
   sendMqttMsg(mqttTopic, mqttPayload);
+
+/////////////////////////////// TESTING!!!!!!!!!
+//  yield();
+//  sendState();
 }
 
 
@@ -505,18 +547,21 @@ void sendConfig(){
 
 /*
  *   sendMqttMsg()
- *   Publish given topic and payload to active broker
+ *   Publish the given topic and payload to active broker
+ *   https://pubsubclient.knolleary.net/api#publish
+ *   boolean publish (topic, payload, [length], [retained])
  */
-void sendMqttMsg(char * mqttTopic, char * mqttPayload){
+void sendMqttMsg(char * mqttTopic, char * mqttPayload, bool retain){
   if (!mqttStatusA){ /* primary mqtt broker is OK */
     sprint(2, "MQTT BROKER - PRIMARY",);     
-    mqttClientA.publish(mqttTopic, mqttPayload);
+    mqttClientA.publish(mqttTopic, mqttPayload, retain);
   }
   else{ /* use backup broker */
     sprint(2, "MQTT BROKER - BACKUP",);     
-    mqttClientB.publish(mqttTopic, mqttPayload);
+    mqttClientB.publish(mqttTopic, mqttPayload, retain);
   }
   sprint(2, "MQTT Outgoing - Topic", mqttTopic); 
   sprint(2, "MQTT Payload", mqttPayload);
+  yield();
 }
   

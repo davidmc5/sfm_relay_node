@@ -1,5 +1,6 @@
 
-#define FW_VERSION "1.27"
+#define FW_VERSION "1.28"
+//adding mqtt last will for node online/offline
 
 /* 
  * To compile and upload with Arduino IDE: 
@@ -67,7 +68,13 @@
 #include "mqtt_brokers.h"
 #include "settings.h"
 
-
+/*
+ * Function Prototypes
+ * 
+ * Note: Most code is written in ANSI C but using C++ style default function arguments. 
+ * C does not allow default/optional function arguments
+ */
+void sendMqttMsg(char * mqttTopic, char * mqttPayload, bool retain=false);
 
 /*
  * STEPS
