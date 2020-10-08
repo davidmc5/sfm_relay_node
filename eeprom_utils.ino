@@ -1,4 +1,5 @@
 /*
+ * SAVECFG(M)
  * Macro to store a single struct field M in FLASH
  * Flash Size of ESP-WROOM-02 is 512 bytes
  * https://www.embedded.com/learn-a-new-trick-with-the-offsetof-macro/
@@ -19,10 +20,11 @@
 //#define GETSETTING(C, S)\\ IT DOES NOT WORK IF DEFINED HERE --> MOVED IT TO TOOLS.INO
 
 
+/* 
+ *  getCfgSettings()
+ *  Retrieves ALL config settings on eeprom into cfgSettings struct in ram
+ */
 void getCfgSettings(){
-  /* 
-   *  Retrieve ALL config settings on eeprom into cfgSettings struct in ram
-   */
   EEPROM.begin(512);
   EEPROM.get(cfgStartAddr, cfgSettings);
   EEPROM.end();
@@ -57,6 +59,8 @@ void saveWifiCredentials() {
 
 
 /*
+ * STRNCOPY(D, S)
+ * stringCopy()
  * Safe string copy to prevent and alert of buffer overrun
  */
   //////////////////////////////////////////////////////////////
@@ -90,9 +94,12 @@ int stringCopy(char* dest, char* source, int dest_size){
 
 
 
-
+/*
+ * saveSettings()
+ * Save configuration settings to flash
+ */
 void saveSettings(){
-  // get settings from flash into temp struct to compare with ram settings
+  /* get settings from flash into temp struct to compare with ram settings */
   EEPROM.begin(512);
   EEPROM.get(cfgStartAddr, cfgSettingsTemp);
   //delay(200); ////////////////////////////////////
@@ -107,14 +114,7 @@ void saveSettings(){
   //clear field
   // cfgSettingsTemp.debug[0]='\0';
   // cfgSettingsTemp.mqttUserB[0]='\0';
-
-   
-  settingsRamPtr = &cfgSettings; // set the struct pointer to the address of the Ram struct
-  settingsFlashPtr = &cfgSettingsTemp; // set the struct pointer to the address of the FLASH struct
-  
-  char *structRamBase = (char *)settingsRamPtr; //cast the base ram as a pointer to char 
-  char *structFlashBase = (char *)settingsFlashPtr; ////cast the base flash as a pointer to char
-  
+ 
   int numSettings= NUM_ELEMS(field); //iterate over the number of fields of the settings struct
   int comp;
   int i=0;
@@ -123,37 +123,35 @@ void saveSettings(){
       /* field data string is longer than field size! */
       (structRamBase+field[i].offset)[0] = '\0'; /* delete invalid (too long) contents by adding null to the first element*/
     }
-    sprint(1, field[i].name, structRamBase+field[i].offset );  //delete this when finished testing!///////////////////////////////////////////////////
-    sprint(1, field[i].name, structFlashBase+field[i].offset );  //delete this when finished testing!///////////////////////////////////////////////////
+//    sprint(1, field[i].name, structRamBase+field[i].offset );  //delete this when finished testing!///////////////////////////////////////////////////
+//    sprint(1, field[i].name, structFlashBase+field[i].offset );  //delete this when finished testing!///////////////////////////////////////////////////
     comp = strcmp(structFlashBase+field[i].offset, structRamBase+field[i].offset);
-
     if (comp != 0){ /*whats on RAM is different than what's on flash */
       sprint(1, "FIELD", field[i].name);
-      sprint(1, "VALUE RAM", structRamBase+field[i].offset);
-      sprint(1, "VALUE FLASH", structFlashBase+field[i].offset);
-      
-     updateFlashField(structRamBase+field[i].offset, cfgStartAddr+field[i].offset, field[i].size);
+      sprint(1, "VALUE IN RAM", structRamBase+field[i].offset);
+      sprint(1, "VALUE IN FLASH", structFlashBase+field[i].offset);      
+      updateFlashField(structRamBase+field[i].offset, cfgStartAddr+field[i].offset, field[i].size);
     }
-    yield(); //avoid tripping the esp8266 watchdog timer
+    yield(); //avoid tripping the esp8266 watchdog timer if the loop takes too long
   }
   EEPROM.get(cfgStartAddr, cfgSettingsTemp); //retrieve current flash settings to verify
   EEPROM.end(); /* this commits changes to flash and frees the flash cache in ram */ 
 }
 
+/* 
+ *  updateFlashField()
+ *  Writes each byte of the source string to flash
+ *  until either a null terminator or the fieldSize are reached
+ *  If the fieldSize is reached withour a null terminator, add a null and set return error
+ *  
+ *  Returns 0 if success or 1 if the source string was too long
+ *  
+ *  IMPORTANT: This function needs to be called between EEPROM.begin() and a EEPROM.end() statements.
+ */  
 int updateFlashField(char* sourceStr, int flashAddress, int fieldSize){
-  /* 
-   *  Writes each byte of the source string to flash
-   *  until either a null terminator or the fieldSize are reached
-   *  If the fieldSize is reached withour a null terminator, add a null and set return error
-   *  
-   *  Returns 0 if success or 1 if string had to be truncated
-   *  
-   *  IMPORTANT: This function needs to be called between EEPROM.begin() and a EEPROM.end() statements.
-   */  
   int i;
   int endFound=0;
   int ret=0;
-
   for(i=0; i < fieldSize; i++){
     EEPROM.write(flashAddress+i, sourceStr[i]);
     if (sourceStr[i] == '\0'){ /* string end found */
@@ -169,12 +167,14 @@ int updateFlashField(char* sourceStr, int flashAddress, int fieldSize){
   return ret;
 }
 
+
+/*
+ * checkConfigSettings() 
+ * Checks that the string length of each struct field
+ * is less or equal than the field size 
+ * It looks for a null character in the string before reaching the fieldSize
+ */
 int checkConfigSettings(char* sourceStr, int fieldSize){
-  /*
-   * this function checks that the string length of each struct field
-   * is less or equal than the field size 
-   * It looks for a null character in the string before reaching the fieldSize
-   */
    int c = 0;
    int ret = 0;
    while(sourceStr[c] != '\0')
@@ -191,6 +191,7 @@ int checkConfigSettings(char* sourceStr, int fieldSize){
 
 
 /*
+ * readFlashString()
  * Read a null terminated string from flash
  * starting at an arbitrary offset (between 0 and 512)
  * and up to a max length (if no null character found)

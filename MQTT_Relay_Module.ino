@@ -1,5 +1,5 @@
 
-#define FW_VERSION "1.26"
+#define FW_VERSION "1.27"
 
 /* 
  * To compile and upload with Arduino IDE: 
@@ -341,21 +341,10 @@ void setup() {
   //Set a 60 sec timer to switch off AP
   APtimer.attach(60, turnAPoff);
 
-  ////TASK-5
-  /// MOVED TO MQTT.INO
-//  //Set MQTT servers (mqttCallback function (just one for both brokers) is declared on mqtt.ino module
-//  mqttClientA.setServer(cfgSettings.mqttServerA, cfgSettings.mqttPortA);  //Primary mqtt broker
-//  mqttClientA.setCallback(mqttCallbackA); //function executed when a MQTT message is received.
-//  mqttClientB.setServer(cfgSettings.mqttServerB, cfgSettings.mqttPortB); //Backup mqtt broker
-//  mqttClientB.setCallback(mqttCallbackB); //function executed when a MQTT message is received.
-
-
-  
   // start softAP
   startAP();
 
-
-////TASK-6 i2c
+  ////TASK-6 i2c
 
   i2cInit(&relayState); /* Initialize I2C */
 

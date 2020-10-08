@@ -37,7 +37,14 @@ struct cfgSettings_s{
 /////////// CHANGE TO Settings_s, settingsRam and settingsFlash
 ///////////////////////////////////////////////////
 struct cfgSettings_s cfgSettings, cfgSettingsTemp; 
-struct cfgSettings_s *settingsRamPtr, *settingsFlashPtr; //pointers to structures
+//struct cfgSettings_s *settingsRamPtr, *settingsFlashPtr; //pointers to structures
+
+
+/* set pointers for both flash and ram structs */
+struct cfgSettings_s   * const settingsRamPtr = &cfgSettings; // set the struct pointer to the address of the Ram struct
+struct cfgSettings_s   * const settingsFlashPtr = &cfgSettingsTemp; // set the struct pointer to the address of the FLASH struct
+char *structRamBase = (char *)settingsRamPtr; //cast the base ram as a pointer to char 
+char *structFlashBase = (char *)settingsFlashPtr; ////cast the base flash as a pointer to char
 
 /*
  * The following array of structs is used to obtain a field's name, offset and size
