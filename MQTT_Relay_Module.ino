@@ -1,5 +1,5 @@
 
-#define FW_VERSION "1.28"
+#define FW_VERSION "1.29"
 //adding mqtt last will for node online/offline
 
 /* 
@@ -75,7 +75,8 @@
  * C does not allow default/optional function arguments
  */
 void sendMqttMsg(char * mqttTopic, char * mqttPayload, bool retain=false);
-
+//void sendConfig(char * setting="all");
+void sendConfig(char * setting="all", char * value="");
 /*
  * STEPS
  * 

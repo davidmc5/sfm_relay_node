@@ -252,7 +252,12 @@ void mqttCallback(char* broker, char* topic, byte* payload, unsigned int length)
   /* rawTopic[mqttMaxTopicLength] will have the same string as the given 'topic' buffer but with '/' replaced with '/0' */
   char delim = '/';
   int numTopics = 1; /*number of topics (separated by '/'). Initially assume we have at least one */
+  /* remove old pointers from topics array */
+  for (int i = 0; i<maxTopics; i++){
+    topics[i] = NULL;
+  }
   topics[0] = rawTopic; /* we have at least one topic's pointer */
+  /* NOTE:  topics[0] IS EITHER THE NODEID(MAC) OR A BROADCAST TOPIC BUT SHOULD NEVER BE NULL*/ 
   for (int i=0 ; i <= topic_length; i++){
     if (topic[i] == delim){
       rawTopic[i] = NULL; //end of string delimiter
@@ -263,6 +268,11 @@ void mqttCallback(char* broker, char* topic, byte* payload, unsigned int length)
     }else{
       rawTopic[i] = topic[i];
     }
+  }
+  /* we need at least one topic */
+  if (numTopics < 2){
+    sprint(1, "NO TOPICS RECEIVED!",);
+    return;
   }
   /*
    * ADD BELOW THE MQTT COMMANDS FOR THE NODE
@@ -310,22 +320,50 @@ void mqttCallback(char* broker, char* topic, byte* payload, unsigned int length)
       checkMqttBrokers();
     }
     sendStatus();
-    sendConfig();
+//    sendConfig();
   }
+
+
+
   /*
    * SETTINGS
    * ////////
    * 
-   * if no payload (query), send back the current setting
-   * If there is a payload (set request), store the setting in flash and send confirmation
+   * NO PAYLOAD (GET): 
+   *    If no specific setting on topic >> (ALL) publish all current settings' values in sequence
+   *    If specific setting in topic >> (SINGLE) publish the CURRENT value of that setting
+   *    
+   * WITH PAYLOAD (SET):
+   *    If payload, there must be a setting topic >> Store that setting in flash and publish confirmation
+   *    RETURN A MESSAGE WITH THE UPDATED VALUE OR AN ERROR THAT NOTHING GOT CHANGED (TOO LONG/TRUNCATED).
+   *    
+   * To delete a setting value enter a null character as payload
    */
    else if (strcmp(topics[1], "setting") == 0){
-    if (strlen(mqttPayload)== 0){
-      sprint(1, "topics[2]=", topics[2]);
-    }else{ /* set setting to payload value*/
-      sprint(1, topics[2], mqttPayload);
-      setSetting(topics[2], mqttPayload);
+    if (topics[2]){ //not a null pointer
+      sendConfig(topics[2], mqttPayload );
+    }else{
+      sendConfig("all", mqttPayload );     
     }
+//    
+//    if (strlen(mqttPayload)== 0){
+//      /* query / GET value(s) */
+//      sprint(1, topics[1], topics[2]);
+//      if (strlen(topics[2]) == 0){
+//        /* send all settings's values */
+//        sendConfig(topics[2], mqttPayload );
+//      }else{
+//        //send just the topic[2] setting value IF it exists        
+//        ;////////////////////////////////
+//
+//        ;////////////////////////////////
+//
+//      }      
+//    }else{ /* set setting to payload value*/
+//      sprint(1, topics[2], mqttPayload);
+///////////// IF SETTING IS NOT FOUND, PRINT A DEBUG MESSAGE AND RETURN A CONFIRMATION ERROR      
+//      setSetting(topics[2], mqttPayload);
+//    }
    }
 
 
@@ -347,7 +385,6 @@ void mqttCallback(char* broker, char* topic, byte* payload, unsigned int length)
   //      }
   //    }
   //  }
-
 } //end of callback
 
 
@@ -358,7 +395,7 @@ void mqttCallback(char* broker, char* topic, byte* payload, unsigned int length)
 void setSetting(char* setting, char* value){
   for (int i=0; i< NUM_ELEMS(field); i++){
     if (strcmp(field[i].name, setting) == 0){
-      sprint(1, "CURRENT SETTING VALUE", structRamBase+field[i].offset);      
+      sprint(1, "STORE CURRENT VALUE", structRamBase+field[i].offset);      
       stringCopy(structRamBase+field[i].offset, value, field[i].size);
       EEPROM.begin(512);
       updateFlashField(structRamBase+field[i].offset, cfgStartAddr+field[i].offset, field[i].size);
@@ -410,12 +447,12 @@ void sendRestart(){
  * sendState()
  * send a connect/online message (payload = 1) on boot
  * (see state 0 of state machine of manageMqtt)
- * FUTURE USE: send a graceful disconnect message (payload=0)
- * (to avoid sending last will)
+ * FUTURE USE: Add argument for offline envent to send a graceful disconnect message (payload=0)
+ * this will prevent sending the last will
  * See checkMqttBrokers() for last will connect message
  */
- void sendState(){
-  /* publish the initial State topic with the retained flag*/
+void sendState(){
+  /* publish the initial State topic with the retained flag ('true')*/
   /* Set state topic */
   strcpy(mqttTopic, "status/");
   strcat(mqttTopic, nodeId);
@@ -424,9 +461,8 @@ void sendRestart(){
   strcpy(mqttPayload, "1");
   /* publish state topic */
   sendMqttMsg(mqttTopic, mqttPayload, true);
-  
-         
- }
+}
+
 
 /////////////////////////////////////////////
 //THIS FUNCTION NEEDS A CHECK TO PREVENT mqttPayload BUFFER OVERRUN 
@@ -447,10 +483,8 @@ void sendStatus(){
   /* Since we have connectivity with a mqtt broker, turn LED on */
   blinker.detach();
   setLED(LED, LED_ON);
-
-  /* Format message payload */
-  
-  /* add firmware version */
+  /* Format message payload */  
+  /* Add firmware version */
   strcpy(mqttPayload, FW_VERSION);          
   strcat(mqttPayload, ":");
   
@@ -495,50 +529,61 @@ void sendStatus(){
   
   /* publish mqtt message to active broker */
   sendMqttMsg(mqttTopic, mqttPayload);
+} /* end of send status */
 
-/////////////////////////////// TESTING!!!!!!!!!
-//  yield();
-//  sendState();
-}
+
 
 
 /*
- * sendConfig()
+ * sendConfig() 
  * Publish all the current configuration settings
  * Iterate through each of the config struct fields 
  * and publish a mqtt message for each
  * If the current flash and ram values differ, send both
  */
-void sendConfig(){  
-  /* read values from flash */ 
+void sendConfig(char * setting, char * value){
+  int i; 
+  /* read values from flash into temp struct */ 
   EEPROM.begin(512);
   EEPROM.get(cfgStartAddr, cfgSettingsTemp);  
 
-  /* set the mqtt topic */
-  strcpy(mqttTopic, "status/"); //// WE MIGHT WANT TO CHANGE THE TOPIC TO 'SETTINGS' INSTEAD
-  strcat(mqttTopic, nodeId); 
-
-  /* iterate the struct fields and publish an mqtt message for each */
-  for (int i=0; i< NUM_ELEMS(field); i++){
+  /* 
+   *  iterate through the struct fields and collect their current values in the payload
+   *  If the given 'setting' is found, set the payload to just that value 
+   */  
+  for (i=0; i< NUM_ELEMS(field); i++){
+    /* check if value in flash is the same as value in active config in ram */
     if (strcmp(structRamBase+field[i].offset, structFlashBase+field[i].offset) == 0){
-        sprint(1, field[i].name, structRamBase+field[i].offset);
-        
+//        sprint(1, field[i].name, structRamBase+field[i].offset);        
         /* format payload */
-        strcpy(mqttPayload, field[i].name);          
-        strcat(mqttPayload, ":");
-        strcat(mqttPayload, structRamBase+field[i].offset);
+        strcpy(mqttPayload, structRamBase+field[i].offset);
      }else{
         /* active config is different than flash. Send both */
-        /* format payload */
         strcpy(mqttPayload, "*");  /* flag to highlight the log */        
-        strcat(mqttPayload, field[i].name);          
-        strcat(mqttPayload, ":");
         strcat(mqttPayload, structRamBase+field[i].offset);
         strcat(mqttPayload, ":");
         strcat(mqttPayload, structFlashBase+field[i].offset);      
      }
-     /* publish mqtt message to active broker */
-     sendMqttMsg(mqttTopic, mqttPayload);
+
+       /* set the mqtt topic */
+  //  strcpy(mqttTopic, "settings/"); //eventually change 'status' to 'settings' topic, since it is more relevant.
+      strcpy(mqttTopic, "status/"); //use 'status' topic instead of 'settings' so the controller stores it on the debug file
+      strcat(mqttTopic, nodeId); 
+      strcat(mqttTopic, "/"); 
+      strcat(mqttTopic, field[i].name); 
+
+//      sprint(1, "TEST",);
+//      sprint(1, field[i].name, setting);
+      if (strcmp(setting, "all")== 0){
+        /* publish mqtt message to active broker */
+        sendMqttMsg(mqttTopic, mqttPayload);
+      }else{
+         /* check if given setting exists */
+         if (strcmp(field[i].name, setting) == 0){
+            sendMqttMsg(mqttTopic, mqttPayload);            
+            break;
+         }
+      }
      yield();
   }
   EEPROM.end();
