@@ -17,23 +17,38 @@
   //SAVECFG(ap_pswd);
 
 
-//#define GETSETTING(C, S)\\ IT DOES NOT WORK IF DEFINED HERE --> MOVED IT TO TOOLS.INO
+/*
+ * saveAll()
+ * 
+ * Saves all the current settings in RAM to FLASH
+ */
+void saveAll(){
+  EEPROM.begin(512);
+  EEPROM.put(cfgStartAddr, cfgSettings);
+  delay(200);
+  EEPROM.end();
+}
+
+
+
 
 
 /* 
  *  getCfgSettings()
- *  Retrieves ALL config settings on eeprom into cfgSettings struct in ram
+ *  Retrieves ALL config settings on eeprom into the given struct in ram
  */
-void getCfgSettings(){
+void getCfgSettings(struct cfgSettings_s *structSettings){
   EEPROM.begin(512);
-  EEPROM.get(cfgStartAddr, cfgSettings);
+  EEPROM.get(cfgStartAddr, *structSettings);
+// EEPROM.get(cfgStartAddr, cfgSettings);
   EEPROM.end();
   delay(200); /////////////////////////////////////
  }
 
 
 void loadWifiCredentials() {
-  getCfgSettings();    
+  getCfgSettings(&cfgSettings);    
+//  getCfgSettings();    
   /* if it is the first time to connect to wifi (no "OK" stored), ignore current eeprom contents */  
   if ( strcmp(cfgSettings.firstRun, "OK") != 0){
     strcpy(cfgSettings.ap_ssid, "<no ssid>");
@@ -115,10 +130,9 @@ void saveSettings(){
   // cfgSettingsTemp.debug[0]='\0';
   // cfgSettingsTemp.mqttUserB[0]='\0';
  
-  int numSettings= NUM_ELEMS(field); //iterate over the number of fields of the settings struct
   int comp;
   int i=0;
-  for (i = 0; i<numSettings; i++){
+  for (i = 0; i<numberOfFields; i++){
     if ( checkConfigSettings(structFlashBase+field[i].offset, field[i].size) ){
       /* field data string is longer than field size! */
       (structRamBase+field[i].offset)[0] = '\0'; /* delete invalid (too long) contents by adding null to the first element*/
@@ -139,7 +153,8 @@ void saveSettings(){
 }
 
 /* 
- *  updateFlashField()
+ *  updateFlashField() ///////// DO WE NEED THIS?? PROBABLY BETTER JUST STORING THE ENTIRE STRUCT FROM RAM!! 
+ *  /////////////////////////////////////////////////////////////
  *  Writes each byte of the source string to flash
  *  until either a null terminator or the fieldSize are reached
  *  If the fieldSize is reached withour a null terminator, add a null and set return error

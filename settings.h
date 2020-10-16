@@ -46,6 +46,8 @@ struct cfgSettings_s   * const settingsFlashPtr = &cfgSettingsTemp; // set the s
 char *structRamBase = (char *)settingsRamPtr; //cast the base ram as a pointer to char 
 char *structFlashBase = (char *)settingsFlashPtr; ////cast the base flash as a pointer to char
 
+
+
 /*
  * The following array of structs is used to obtain a field's name, offset and size
  * to detect and prevent buffer overruns
@@ -75,3 +77,5 @@ struct Field_s field[] = {
   {"mqttUserB", 170, 20},
   {"mqttPasswordB", 190, 20}
 };
+
+const int numberOfFields = NUM_ELEMS(field);

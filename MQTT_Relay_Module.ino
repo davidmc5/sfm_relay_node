@@ -1,5 +1,5 @@
 
-#define FW_VERSION "1.29"
+#define FW_VERSION "1.30"
 //adding mqtt last will for node online/offline
 
 /* 
@@ -74,9 +74,13 @@
  * Note: Most code is written in ANSI C but using C++ style default function arguments. 
  * C does not allow default/optional function arguments
  */
-void sendMqttMsg(char * mqttTopic, char * mqttPayload, bool retain=false);
-//void sendConfig(char * setting="all");
-void sendConfig(char * setting="all", char * value="");
+void sendMqttMsg(char * mqttTopic, char *mqttPayload, bool retain=false);
+void configSettings(char *setting, char *value="");
+void getCfgSettings(struct cfgSettings_s *structSettings = &cfgSettings);
+void publishSetting(char *setting="all");
+void publishError(char *setting="ERROR");
+
+
 /*
  * STEPS
  * 
@@ -207,6 +211,7 @@ uint8_t mqttStatusB = 1; /* Backup mqtt broker status flag. 1=failed / 0 = OK */
 uint8_t mqttBrokerState = 0; /* state machine for sending updates -- see mqtt module */
 uint8_t mqttErrorCounter = 0; /* used to reset mqtt broker settings to defaults */
 
+#define ERROR -1
 
 char tempBuffer[mqttMaxPayloadLength]; /*used for strcat/strcpy /payload and temp storage - handleHttp and mqtt modules */
 

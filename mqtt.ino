@@ -330,40 +330,29 @@ void mqttCallback(char* broker, char* topic, byte* payload, unsigned int length)
    * ////////
    * 
    * NO PAYLOAD (GET): 
-   *    If no specific setting on topic >> (ALL) publish all current settings' values in sequence
+   *    If no specific setting on topic >> (defaul argument = 'all') publish all current settings' values in sequence
    *    If specific setting in topic >> (SINGLE) publish the CURRENT value of that setting
+   *    If the given setting does not exist, publish an error
    *    
    * WITH PAYLOAD (SET):
-   *    If payload, there must be a setting topic >> Store that setting in flash and publish confirmation
+   *    If payload, there must be a valid setting topic >> Store that setting in flash and publish confirmation
    *    RETURN A MESSAGE WITH THE UPDATED VALUE OR AN ERROR THAT NOTHING GOT CHANGED (TOO LONG/TRUNCATED).
+   *    To delete a setting value enter a null character as payload
    *    
-   * To delete a setting value enter a null character as payload
    */
-   else if (strcmp(topics[1], "setting") == 0){
-    if (topics[2]){ //not a null pointer
-      sendConfig(topics[2], mqttPayload );
-    }else{
-      sendConfig("all", mqttPayload );     
-    }
-//    
-//    if (strlen(mqttPayload)== 0){
-//      /* query / GET value(s) */
-//      sprint(1, topics[1], topics[2]);
-//      if (strlen(topics[2]) == 0){
-//        /* send all settings's values */
-//        sendConfig(topics[2], mqttPayload );
-//      }else{
-//        //send just the topic[2] setting value IF it exists        
-//        ;////////////////////////////////
-//
-//        ;////////////////////////////////
-//
-//      }      
-//    }else{ /* set setting to payload value*/
-//      sprint(1, topics[2], mqttPayload);
-///////////// IF SETTING IS NOT FOUND, PRINT A DEBUG MESSAGE AND RETURN A CONFIRMATION ERROR      
-//      setSetting(topics[2], mqttPayload);
-//    }
+   else if (strcmp(topics[1], "settings") == 0){
+      if (topics[2]){ //is not a null pointer
+        if (strcmp(topics[2], "saveAll") == 0){
+          /* save current config values in RMA to FLASH */
+          saveAll();
+        }else{
+          /* publish just the requested setting. If there a payload, configure that value */
+          configSettings(topics[2], mqttPayload );
+        }
+      }else{
+        /* publish all configuration settings */    
+        configSettings("all");   
+      }
    }
 
 
@@ -388,24 +377,6 @@ void mqttCallback(char* broker, char* topic, byte* payload, unsigned int length)
 } //end of callback
 
 
-/*
- *   setSetting()
- *   store the given setting value in flash
- */
-void setSetting(char* setting, char* value){
-  for (int i=0; i< NUM_ELEMS(field); i++){
-    if (strcmp(field[i].name, setting) == 0){
-      sprint(1, "STORE CURRENT VALUE", structRamBase+field[i].offset);      
-      stringCopy(structRamBase+field[i].offset, value, field[i].size);
-      EEPROM.begin(512);
-      updateFlashField(structRamBase+field[i].offset, cfgStartAddr+field[i].offset, field[i].size);
-      EEPROM.end();
-      yield();
-      sendStatus();
-      break;     
-    }
-  }
-}
 
 
 /*
@@ -532,64 +503,6 @@ void sendStatus(){
 } /* end of send status */
 
 
-
-
-/*
- * sendConfig() 
- * Publish all the current configuration settings
- * Iterate through each of the config struct fields 
- * and publish a mqtt message for each
- * If the current flash and ram values differ, send both
- */
-void sendConfig(char * setting, char * value){
-  int i; 
-  /* read values from flash into temp struct */ 
-  EEPROM.begin(512);
-  EEPROM.get(cfgStartAddr, cfgSettingsTemp);  
-
-  /* 
-   *  iterate through the struct fields and collect their current values in the payload
-   *  If the given 'setting' is found, set the payload to just that value 
-   */  
-  for (i=0; i< NUM_ELEMS(field); i++){
-    /* check if value in flash is the same as value in active config in ram */
-    if (strcmp(structRamBase+field[i].offset, structFlashBase+field[i].offset) == 0){
-//        sprint(1, field[i].name, structRamBase+field[i].offset);        
-        /* format payload */
-        strcpy(mqttPayload, structRamBase+field[i].offset);
-     }else{
-        /* active config is different than flash. Send both */
-        strcpy(mqttPayload, "*");  /* flag to highlight the log */        
-        strcat(mqttPayload, structRamBase+field[i].offset);
-        strcat(mqttPayload, ":");
-        strcat(mqttPayload, structFlashBase+field[i].offset);      
-     }
-
-       /* set the mqtt topic */
-  //  strcpy(mqttTopic, "settings/"); //eventually change 'status' to 'settings' topic, since it is more relevant.
-      strcpy(mqttTopic, "status/"); //use 'status' topic instead of 'settings' so the controller stores it on the debug file
-      strcat(mqttTopic, nodeId); 
-      strcat(mqttTopic, "/"); 
-      strcat(mqttTopic, field[i].name); 
-
-//      sprint(1, "TEST",);
-//      sprint(1, field[i].name, setting);
-      if (strcmp(setting, "all")== 0){
-        /* publish mqtt message to active broker */
-        sendMqttMsg(mqttTopic, mqttPayload);
-      }else{
-         /* check if given setting exists */
-         if (strcmp(field[i].name, setting) == 0){
-            sendMqttMsg(mqttTopic, mqttPayload);            
-            break;
-         }
-      }
-     yield();
-  }
-  EEPROM.end();
-}
-
-
 /*
  *   sendMqttMsg()
  *   Publish the given topic and payload to active broker
@@ -610,3 +523,181 @@ void sendMqttMsg(char * mqttTopic, char * mqttPayload, bool retain){
   yield();
 }
   
+
+
+/*
+ * configSettings() ////////RENAME TO getSettings() ???? /////////////////////////
+ * 
+ * Publish all configuration settings if none given
+ * or Publish given setting.
+ * If the current flash and ram values differ, send both
+ * If a value is provided, change it in ram to validate
+ * Use a separate function to save to FLASH and validate(wifi and broker), once all settings have been updated in ram.
+ */
+void configSettings(char * setting, char * value){
+  bool fieldFound = 0;
+  bool allFields = (strcmp(setting, "all")== 0) ? 1 : 0; /* set the flag if all fields are being requested */
+  bool payload = (strlen(value) > 0) ? 1 : 0; /* set flag if there is a payload -- value to change the setting */
+  bool ret = 0;
+  int i;
+  int fieldIndex;
+  /* read values from flash into TEMP/FLASH struct */ 
+  getCfgSettings(&cfgSettingsTemp);
+  /* publish requested settings and update setting in ram if a value is given */  
+  if (!allFields){
+    /* check if the setting is valid */
+    fieldIndex = getFieldIndex(setting);
+    if (fieldIndex == ERROR){
+      sprint(1, "Unknown Setting", setting);
+      publishError(setting);
+      return; 
+    }
+    if (payload){
+       /* update given setting in RAM*/
+       setSetting(fieldIndex, value);
+       /* Publish current value(s) */
+       publishIndex(fieldIndex);
+    }else{
+      /* No payload. just publish the current value(s) ram/flash of the given setting */
+      publishIndex(fieldIndex);
+    }
+  }else{
+  /* Publish all settings' values */     
+    for (i=0; i<numberOfFields; i++){
+      publishIndex(i);
+      yield();
+    }
+  }
+}
+
+
+
+/*
+ * publishIndex()
+ * 
+ * publishes the ram and flash setting values for the given index
+ * this function requires that both flash and ram structs have been updated from flash
+ * and needs to be called from within an EEPROM.begin() and an EEPROM.end() block. 
+ */
+void publishIndex(int index){
+///////////////////////////////////////////////////
+  /* check if given index is valid */
+  if(index < 0 || index >= numberOfFields){
+    sprint(1, "Invalid Struct Field Index",);
+    publishError();
+    return;
+  }
+  /* Valid index. Check if value in flash is the same as value in active config in ram */
+  if (strcmp(structRamBase+field[index].offset, structFlashBase+field[index].offset) == 0){
+      /* place value of current field to payload */
+      strcpy(mqttPayload, structRamBase+field[index].offset);
+  }else{
+      /* ram and flash settings are differnt. Publish both and prefix the payload with an asterisk */
+      strcpy(mqttPayload, "*");  /* flag to highlight the log */        
+      strcat(mqttPayload, structRamBase+field[index].offset);
+      strcat(mqttPayload, ":");
+      strcat(mqttPayload, structFlashBase+field[index].offset);      
+  }
+  /* append the setting name to the mqtt topic */
+  strcpy(mqttTopic, "settings/"); 
+  strcat(mqttTopic, nodeId); 
+  strcat(mqttTopic, "/"); 
+  strcat(mqttTopic, field[index].name); 
+  /* publish mqtt message to active broker */
+  sendMqttMsg(mqttTopic, mqttPayload);
+}
+
+
+/*
+ * publishError()
+ * 
+ * Publishes an error topic
+ * **settings/F4CFA271B033/ERROR Unknown Setting
+ * 
+ * If the optional argument is included it will include that argument to the topic
+ * **settings/F4CFA271B033/kaka Unknown Setting
+ * 
+ * this function requires that both flash and ram structs have been updated from flash
+ * and needs to be called from within an EEPROM.begin() and an EEPROM.end() block. 
+ */
+
+void publishError(char *setting){
+  /* append the setting name to the mqtt topic */
+  strcpy(mqttTopic, "settings/"); 
+  strcat(mqttTopic, nodeId); 
+  strcat(mqttTopic, "/"); 
+  strcat(mqttTopic, setting); 
+  /* place error message into payload */
+  strcpy(mqttPayload, "Unknown Setting"); 
+  /* publish mqtt message to active broker */
+  sendMqttMsg(mqttTopic, mqttPayload);
+}
+
+/*
+ * /////////////////////////////////////////////////////////////////////
+ * TO BE CHANGED!!! USE getFieldIndex()
+ *   setSetting()
+ *   store the given setting value in flash
+ *   /////////////////////////////////////////////////////
+ *   INSTEAD OF STORING ONE SETTING AT A TIME, JUST SAVE THE ENTIRE STRUCT WHEN MULTIPLE VALUES NEED TO BE CHANGED (WIFI/BROKERS)
+ *   ////////////////////////////////////////////////////
+ */
+void setSetting(int index, char* value){
+  bool ret = 0;
+////////////// MAKE A SEPARATE FUNCTION TO STORE THE ENTIRE STRUCT, EVEN IF JUST A SETTING IS DIFFERENT
+  ret = stringCopy(structRamBase+field[index].offset, value, field[index].size);
+  if (ret){
+    sprint(1, "INVALID VALUE FOR", field[index].name);
+    sprint(1, "Value", value);  
+  }else{
+    sprint(1, "STORED VALUE", structRamBase+field[index].offset);  
+  }
+}
+//void setSetting(char* setting, char* value){
+//  bool ret = 0;
+///////////////
+///////////////// CHANGE THIS TO USE THE FIND INDEX FUNCTION
+//////////////// AND DO NOT STORE IN FLASH
+//////////////// MAKE A SEPARATE FUNCTION TO STORE THE ENTIRE STRUCT, EVEN IF JUST A SETTING IS DIFFERENT
+////////////////
+//  for (int i=0; i<numberOfFields; i++){
+//    if (strcmp(field[i].name, setting) == 0){
+//      ret = stringCopy(structRamBase+field[i].offset, value, field[i].size);
+//      //// SEND A MESSAGE IF THE GIVEN VALUE IS INVALID/TRUNCATED?
+//      if (ret){
+//        sprint(1, "INVALID VALUE FOR", field[i].name);
+//        sprint(1, "Value", value);  
+//      }else{
+//        sprint(1, "STORED VALUE", structRamBase+field[i].offset);  
+//      }
+//      EEPROM.begin(512);
+//      updateFlashField(structRamBase+field[i].offset, cfgStartAddr+field[i].offset, field[i].size);
+//      EEPROM.end();
+//      break;     
+//    }
+//  }
+//}
+
+
+
+/*
+ * getFieldIndex()
+ * 
+ * Locate the given setting in the field[] array
+ * and return the field index or -1 if not found.
+ */
+int getFieldIndex(char * confSetting){
+  bool found = 0;
+  int i;
+//  for (i=0; i< NUM_ELEMS(field); i++){
+  for (i=0; i< numberOfFields; i++){
+    /* check if value in flash is the same as value in active config in ram */
+    if (strcmp(field[i].name, confSetting) == 0){
+      found = 1;
+      sprint(1, "Setting Found", field[i].name);       
+      break;
+    }
+  }
+  /* return field index or -1 if not found */
+  return (found) ? i : ERROR;
+}
