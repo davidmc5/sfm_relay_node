@@ -25,6 +25,58 @@
  */
 
 
+/*
+ * testSettings()
+ * 
+ * Test if current settings in ram allow connecting to wifi and mqtt broker
+ * If unable to connect to both after a number of retries, retrieve settings from flash
+ * TODO: Store up to 4 known good wifi settings and test them in sequence during an outage
+ * If mqtt fails from both flash and ram, retrieve mqtt broker defaults from file (but not wifi!)
+ * 
+ */
+void testSettings(){
+  /* test wifi -- force a connect attempt using ram settings */
+  sprint (1, "WIFI RECONNECT",);
+  wifiReconnects = 0; /* reset error counter */
+  connect = true; /* force wifi to reconnect to the settings on ram */
+  ;
+
+  /* test mqtt brokers */
+  ;
+}
+
+
+
+
+/*
+ * resetMqttBrokerStates()
+ * 
+ * After any wifi outage
+ * reinitilize state machine and 
+ * set brokers offline
+ * This fucntion is called by wifi/manageWifi() when disconnected from wifi
+ */
+void resetMqttBrokerStates(){
+  mqttBrokerState = mqttBrokerUpA = mqttBrokerUpA = 0;
+}
+
+
+
+/*
+ * mqttBrokerOnline()
+ * 
+ * Call this function when at least one broker is back online
+ * Set blinking LED to solid
+ * Sends online flag and node status topic to each online broker
+ */
+ void mqttBrokerOnline(){
+    /* Publish status message */
+    sendStatus(); 
+    /* Publish retained online message */
+    sendState(); 
+ }
+ 
+
 /* 
  *  manageMqtt()
  *  Implements and update a state machine to monitor brokers
@@ -45,14 +97,14 @@ void manageMqtt(){
         //initial state after power up. Wait here until at least one broker is connected
         checkMqttBrokers();
        
-        if (!mqttStatusA || !mqttStatusB){ //at least one broker is up
-          mqttBrokerState = 1; //next state
-          sendStatus();  /* Sending a status message will clear node error -> LED will stop blinking */
-          sendRestart(); /*send node's restart code (crash message) only once after boot */ 
-          sendState();
+        if (mqttBrokerUpA || mqttBrokerUpB){ //at least one broker is up
+//          mqttBrokerState = 1; //next state
+          mqttNextState(1);
+          mqttBrokerOnline(); /* publish online status */
+          sendRestart(); /* Publish node's restart code (crash message) only once after boot */ 
           mqttErrorCounter = 0;      
         }else{
-          /* both brokers still down */
+          /* both brokers still down - wait here */
           mqttErrorCounter++;
           if (mqttErrorCounter > 0){
             loadMqttBrokerDefaults();          
@@ -65,27 +117,52 @@ void manageMqtt(){
       case 1: 
         //Normal state - Both brokers are up - Waiting for failures
         checkMqttBrokers(); 
-        if (mqttStatusA && mqttStatusB){ //both brokers are down. Can't send messages!
-          mqttBrokerState = 2; //next state
-          blinker.attach(0.5, changeState); //blink LED
-        }else if(mqttStatusA || mqttStatusB){ //only one broker down
-          mqttBrokerState = 3;
+        if (!mqttBrokerUpA && !mqttBrokerUpB){ //both brokers are down. Can't send messages!
+          mqttNextState(3);
+//          mqttBrokerState = 3; //next state
+//          blinker.attach(0.5, changeState); //blink LED
+        }else if(!mqttBrokerUpA || !mqttBrokerUpB){ //one broker is down
+//          mqttBrokerState = 2;
+          mqttNextState(2);
           sendStatus();          
         }
         break;
 
+//case 3: 
       case 2: 
-        //both brokers are down. Wait here until at least one recovers
-        checkMqttBrokers();
-        if (!mqttStatusA && !mqttStatusB){ //both brokers recovered
-          mqttBrokerState = 1;
-          mqttErrorCounter = 0;
-          sendStatus();          
+        // One broker failed. Wait here until full recovery or until both brokers fail
+        // DO NOT check connectivity here becausue it adds too much delay 
+        // and makes the phone app unresponsive
+        // reconnection attempts block processing mqtt messages from the connected broker
+        if (!mqttClientA.connected()) { mqttBrokerUpA = 0;} /* node not connected to primary broker)*/
+        if (!mqttClientB.connected()) { mqttBrokerUpB = 0;} /* node not connected to backup broker)*/      
+        if (mqttBrokerUpA && mqttBrokerUpB){ //both brokers recovered
+//          mqttBrokerState = 1;
+          mqttNextState(1);
+          mqttBrokerOnline(); /* publish online status and stop LED from blinking */
+        }else if (!mqttBrokerUpA && !mqttBrokerUpB){ //both brokers down - Can't send status updates
+//          mqttBrokerState = 3;
+//          blinker.attach(0.5, changeState); //blink LED
+            mqttNextState(3);
         }
-        else if(mqttStatusA + mqttStatusB == 1){ //only one broker recovered
-          mqttBrokerState = 3;
+        mqttErrorCounter = 0;
+        break;  
+
+//case 2: 
+      case 3: 
+        //Both brokers are down. Wait here until at least one recovers
+        checkMqttBrokers();
+        if (mqttBrokerUpA && mqttBrokerUpB){ //both brokers recovered
+//          mqttBrokerState = 1;
+          mqttNextState(1);
           mqttErrorCounter = 0;
-          sendStatus();          
+          mqttBrokerOnline(); /* publish online status and stop LED from blinking */
+        }
+        else if(mqttBrokerUpA + mqttBrokerUpB == 1){ //only one broker recovered
+//          mqttBrokerState = 0; /* start again from inital state to recheck the other broker */
+          mqttNextState(0);
+          mqttErrorCounter = 0;
+          mqttBrokerOnline(); /* publish online status and stop LED from blinking */
         }
         /* both brokers still down */
         mqttErrorCounter++;
@@ -94,24 +171,8 @@ void manageMqtt(){
           mqttErrorCounter = 0;          
         }
         sprint(1, "MQTT ERROR COUNTER >>>>>>>>>>>>>", mqttErrorCounter);        
-        break;
-        
-      case 3: 
-        // one failure state. Wait here until full recovery or both brokers fail
-        // Do not check connectivity here becasue it adds too much delay for the app
-        // reconnection attempts block processing mqtt messages from the connected broker
-        if (!mqttClientA.connected()) { mqttStatusA = 1;} 
-        if (!mqttClientB.connected()) { mqttStatusB = 1;}         
-        if (!mqttStatusA && !mqttStatusB){ //both brokers recovered
-          mqttBrokerState = 1;
-          sendStatus();          
-        }else if (mqttStatusA && mqttStatusB){ //both brokers down
-          mqttBrokerState = 2;
-          blinker.attach(0.5, changeState); //blink LED
-        }
-        mqttErrorCounter = 0;
-        break;        
-    }
+        break;              
+    }/* end of broker state machine */
   } 
   else {
     /* not yet connected to wifi --wait a bit */
@@ -120,8 +181,58 @@ void manageMqtt(){
 } /* end of manageMqtt() */
 
 
+
+
+/*
+ * mqttNextState(state)
+ * 
+ * Transitions the state machine to the given state.
+ * Depending on the state transition, it will start/stop blinking the led
+ * to signal a failure/recovery state.
+ * 
+ * STATES:
+ * *******
+ * 0: Intial state after power up. Awaiting broker connectivity
+ * 1: Normal state. Node is connected to both primary and backup brokers.
+ * 2: One broker is offline. Wait here until the other one fails or a recheck/restore command changes the state
+ * 3: Both brokers are offline. Monitor both brokers until at least one comes back online.
+ */
+void mqttNextState(int state){
+  sprint(1, "STATE CHANGED FROM", mqttBrokerState);
+  sprint(1, "STATE CHANGED TO", state);
+  mqttBrokerState = state;
+  switch(state){
+    
+    case(0): /* Intial State - Check connectivity */
+      /* Blink led until broker connectivity is aserted */
+      blinker.attach(0.5, changeState); //blink LED
+      break;
+      
+    case(1): /* Normal State - Both mqtt brkers are online */
+      /* Turn LED on */
+      blinker.detach();
+      setLED(LED, LED_ON);
+      break;
+      
+    case(2): /* Only one broker is offline */
+      /* Turn LED on */
+      blinker.detach();
+      setLED(LED, LED_ON);
+      break;
+ 
+    case(3): /* Both brokers are offline */
+      /* full failure - blink LED */
+      blinker.attach(0.5, changeState); //blink LED
+      break;  
+  }
+}
+
+
+
+
 /*
  * loadMqttBrokerDefaults()
+ * 
  * Loads to the config struct the settings from mqtt_brokers file
  */
 void loadMqttBrokerDefaults(){  
@@ -140,34 +251,36 @@ void loadMqttBrokerDefaults(){
 
 
 
+
+
+
 /* 
- *  checkMqttBrokers() checks if node is connected to brokers and set status flags
+ *  checkMqttBrokers() 
+ *  
+ *  checks if node is connected to each broker 
+ *  and set status flags
  *  If node is not connected, attemp reconnect
  */
 void checkMqttBrokers(){
   /* Test Primary mqtt broker */
   if (!mqttClientA.connected()) {
-    mqttStatusA = 1; 
-    /* the mqttServer and callback are set in the setup() function TASK 5 */ 
-    //https://pubsubclient.knolleary.net/api#connect
-    // boolean connect (clientID, [username, password], [willTopic, willQoS, willRetain, willMessage], [cleanSession])  
-    /* mqtt username and password are defined in the file mqtt_brokers.h */
-
+    mqttBrokerUpA = 0; /* set broker as down */
+    /*
+     * the mqttServer and callback are set in the setup() function TASK 5
+     * https://pubsubclient.knolleary.net/api#connect
+     * boolean connect (clientID, [username, password], [willTopic, willQoS, willRetain, willMessage], [cleanSession])
+     * mqtt username and password are defined in the file mqtt_brokers.h
+     * 
+     */
     mqttClientA.setServer(cfgSettings.mqttServerA, atoi(cfgSettings.mqttPortA));  //Primary mqtt broker
     mqttClientA.setCallback(mqttCallbackA); //function executed when a MQTT message is received.
-    /*
-     * Connect with a last will message payload set to 0 (false: not connected) and retained
-     * boolean connect (clientID, [username, password], [willTopic, willQoS, willRetain, willMessage], [cleanSession])
-     * https://pubsubclient.knolleary.net/api#connect
-     */
-    /* Set last will topic */
+    /* Connect with a last will message payload set to 0 (false: OFFLINE) and retained */
     strcpy(mqttTopic, "status/");
     strcat(mqttTopic, nodeId);
     strcat(mqttTopic, "/state/");
     if (mqttClientA.connect(mqttClientId, cfgSettings.mqttUserA, cfgSettings.mqttPasswordA, mqttTopic, 0, true, "0" )) { 
-      mqttStatusA = 0;  
+      mqttBrokerUpA = 1;  /* connected to primary broker */
       sprint(1, "Connected to MQTT Broker 1", cfgSettings.mqttServerA);
-      //sprint(1, "MQTTCLIENTID", mqttClientId);
       /* Subscribe to all topics (/#) prefixed by this nodeId */
       strcpy(mqttTopic, nodeId);
       strcat(mqttTopic, "/#");
@@ -179,8 +292,7 @@ void checkMqttBrokers(){
   } /*end of Primary mqtt broker test */
   /* Test Backup mqtt broker */
   if (!mqttClientB.connected()) { 
-    mqttStatusB = 1;   
-     
+    mqttBrokerUpB = 0;       
     mqttClientB.setServer(cfgSettings.mqttServerB, atoi(cfgSettings.mqttPortB)); //Backup mqtt broker
     mqttClientB.setCallback(mqttCallbackB); //function executed when a MQTT message is received. 
     /* Set last will topic */
@@ -189,25 +301,21 @@ void checkMqttBrokers(){
     strcat(mqttTopic, "/state/");
     
     if (mqttClientB.connect(mqttClientId, cfgSettings.mqttUserB, cfgSettings.mqttPasswordB, mqttTopic, 0, true, "0" )) { 
-      mqttStatusB = 0;          
+      mqttBrokerUpB = 1;  /* connected to backup broker */        
       sprint(1, "Connected to MQTT Broker 2", cfgSettings.mqttServerB);
-      //sprint(1, "MQTTCLIENTID", mqttClientId);
       /* subscribe all topics for this nodeId (nodeId/#) */
       strcpy(mqttTopic, nodeId);
       strcat(mqttTopic, "/#");
       mqttClientB.subscribe(mqttTopic);
-//      /* if any mqtt parameters different on flash, store them */      
-//      saveSettings();
     }
     else {   
       sprint(0, "Failure MQTT Broker 2 - State", mqttClientB.state());
     }        
   } /* end of backup broker test */
-  if (mqttStatusB + mqttStatusB > 0){
-    /* Connected to any broker */  
-    saveSettings(); /* Save mqtt parameters to flash, if different */ 
-  }
-} /* end of brokers test */
+} /* end mqtt brokers check */
+
+
+
 
 
 
@@ -320,7 +428,6 @@ void mqttCallback(char* broker, char* topic, byte* payload, unsigned int length)
       checkMqttBrokers();
     }
     sendStatus();
-//    sendConfig();
   }
 
 
@@ -341,16 +448,20 @@ void mqttCallback(char* broker, char* topic, byte* payload, unsigned int length)
    *    
    */
    else if (strcmp(topics[1], "settings") == 0){
-      if (topics[2]){ //is not a null pointer
+      if (topics[2]){ //If not a null pointer
         if (strcmp(topics[2], "saveAll") == 0){
           /* save current config values in RMA to FLASH */
           saveAll();
-        }else{
-          /* publish just the requested setting. If there a payload, configure that value */
+        }else if (strlen(topics[2])< 1) {
+          /* no topic (just the string termination null character) */
+          configSettings("all"); 
+        }else{          
+          /* publish just the requested setting. If there a payload, configure that value in ram */
           configSettings(topics[2], mqttPayload );
+          sprint(1,"topics[2]", strlen(topics[2]));
         }
       }else{
-        /* publish all configuration settings */    
+        /* Publish all configuration settings (null pointer = no setting given */    
         configSettings("all");   
       }
    }
@@ -379,6 +490,8 @@ void mqttCallback(char* broker, char* topic, byte* payload, unsigned int length)
 
 
 
+
+
 /*
  *   mqttMsgCheck()
  *   Verify topic length of the message received is within limits
@@ -397,6 +510,9 @@ void mqttMsgCheck(char* topic, byte* payload, unsigned int payloadLength){
   }
 }
 
+
+
+
 /*
  * sendRestart()
  * Publishes the last restart code (normal/crash, etc)
@@ -411,8 +527,11 @@ void sendRestart(){
   sendMqttMsg(mqttTopic, mqttPayload);
 }
 
+
+
+
 ////THIS MIGHT JUST BE NEEDED FOR GRACEFUL DISCONNECTS
-///SEE 
+/// BY PASSING AN OPTIONAL ARGUMENT
 ///boolean connect (clientID, [username, password], [willTopic, willQoS, willRetain, willMessage], [cleanSession])
 /*
  * sendState()
@@ -423,16 +542,19 @@ void sendRestart(){
  * See checkMqttBrokers() for last will connect message
  */
 void sendState(){
-  /* publish the initial State topic with the retained flag ('true')*/
-  /* Set state topic */
+  /* publish the initial node state topic with the retained flag ('true')*/
+  /* Set mqtt topic */
   strcpy(mqttTopic, "status/");
   strcat(mqttTopic, nodeId);
   strcat(mqttTopic, "/state/");
-  /* Set message payload */  
-  strcpy(mqttPayload, "1");
-  /* publish state topic */
+  /* Set mqtt payload */  
+  strcpy(mqttPayload, "1"); /* node is online */
+  /* publish state topic with retain = true */
   sendMqttMsg(mqttTopic, mqttPayload, true);
 }
+
+
+
 
 
 /////////////////////////////////////////////
@@ -451,9 +573,11 @@ void sendState(){
  *  mqtt brokers status flags
  */
 void sendStatus(){
-  /* Since we have connectivity with a mqtt broker, turn LED on */
-  blinker.detach();
-  setLED(LED, LED_ON);
+  ////////////////// NOT SURE WE NEED TO DO THIS HERE... WHAT IF WE ARE NOT CONNECTED?
+//  /* Since we have connectivity with a mqtt broker, turn LED on */
+//  blinker.detach();
+//  setLED(LED, LED_ON);
+  ///////////////////////////////////////////////
   /* Format message payload */  
   /* Add firmware version */
   strcpy(mqttPayload, FW_VERSION);          
@@ -486,12 +610,12 @@ void sendStatus(){
   strcat(mqttPayload, ":");
   
   /* add mqtt primary broker status flag */
-  sprintf(tempBuffer, "%d", mqttStatusA);
+  sprintf(tempBuffer, "%d", mqttBrokerUpA);
   strcat(mqttPayload, tempBuffer);          
   strcat(mqttPayload, ":");
 
    /* add mqtt backup broker status flag */
-  sprintf(tempBuffer, "%d", mqttStatusB);
+  sprintf(tempBuffer, "%d", mqttBrokerUpB);
   strcat(mqttPayload, tempBuffer);     
  
   /* format mqtt topic */
@@ -503,25 +627,33 @@ void sendStatus(){
 } /* end of send status */
 
 
+
+
 /*
  *   sendMqttMsg()
+ *   
  *   Publish the given topic and payload to active broker
+ *   If retain = true, send to all online brokers
  *   https://pubsubclient.knolleary.net/api#publish
  *   boolean publish (topic, payload, [length], [retained])
  */
 void sendMqttMsg(char * mqttTopic, char * mqttPayload, bool retain){
-  if (!mqttStatusA){ /* primary mqtt broker is OK */
-    sprint(2, "MQTT BROKER - PRIMARY",);     
+  if (mqttBrokerUpA){ /* Connected to primary mqtt broker */
+    sprint(2, "SENDING TO MQTT BROKER - PRIMARY",);     
     mqttClientA.publish(mqttTopic, mqttPayload, retain);
+    if (retain && mqttBrokerUpB){ /* publish retained topics also to backup broker if up */
+      mqttClientB.publish(mqttTopic, mqttPayload, retain);
+    }
   }
   else{ /* use backup broker */
     sprint(2, "MQTT BROKER - BACKUP",);     
     mqttClientB.publish(mqttTopic, mqttPayload, retain);
   }
-  sprint(2, "MQTT Outgoing - Topic", mqttTopic); 
-  sprint(2, "MQTT Payload", mqttPayload);
+  sprint(2, mqttTopic, mqttPayload); 
   yield();
 }
+
+
   
 
 
@@ -575,24 +707,24 @@ void configSettings(char * setting, char * value){
 /*
  * publishIndex()
  * 
- * publishes the ram and flash setting values for the given index
- * this function requires that both flash and ram structs have been updated from flash
- * and needs to be called from within an EEPROM.begin() and an EEPROM.end() block. 
+ * Publishes the ram and flash setting values for the given index
+ * Requires that both flash and ram structs have been updated with eeprom/getCfgSettings()
  */
 void publishIndex(int index){
-///////////////////////////////////////////////////
   /* check if given index is valid */
   if(index < 0 || index >= numberOfFields){
     sprint(1, "Invalid Struct Field Index",);
     publishError();
     return;
   }
-  /* Valid index. Check if value in flash is the same as value in active config in ram */
+  /* Valid index. Check if the value in flash is the same as value in active config in ram */
   if (strcmp(structRamBase+field[index].offset, structFlashBase+field[index].offset) == 0){
       /* place value of current field to payload */
       strcpy(mqttPayload, structRamBase+field[index].offset);
   }else{
-      /* ram and flash settings are differnt. Publish both and prefix the payload with an asterisk */
+      /* ram and flash settings are different. Set the flag for unsaved changes */
+      unsavedChanges = true; /* this flag is unset to flase by eeprom/saveAll() */
+      /* Publish both and prefix the payload with an asterisk */      
       strcpy(mqttPayload, "*");  /* flag to highlight the log */        
       strcat(mqttPayload, structRamBase+field[index].offset);
       strcat(mqttPayload, ":");
@@ -611,16 +743,12 @@ void publishIndex(int index){
 /*
  * publishError()
  * 
- * Publishes an error topic
+ * Publishes an error topic like this:
  * **settings/F4CFA271B033/ERROR Unknown Setting
  * 
- * If the optional argument is included it will include that argument to the topic
+ * If the optional argument is included it will include that argument to the topic:
  * **settings/F4CFA271B033/kaka Unknown Setting
- * 
- * this function requires that both flash and ram structs have been updated from flash
- * and needs to be called from within an EEPROM.begin() and an EEPROM.end() block. 
  */
-
 void publishError(char *setting){
   /* append the setting name to the mqtt topic */
   strcpy(mqttTopic, "settings/"); 
@@ -634,8 +762,6 @@ void publishError(char *setting){
 }
 
 /*
- * /////////////////////////////////////////////////////////////////////
- * TO BE CHANGED!!! USE getFieldIndex()
  *   setSetting()
  *   store the given setting value in flash
  *   /////////////////////////////////////////////////////
@@ -644,7 +770,6 @@ void publishError(char *setting){
  */
 void setSetting(int index, char* value){
   bool ret = 0;
-////////////// MAKE A SEPARATE FUNCTION TO STORE THE ENTIRE STRUCT, EVEN IF JUST A SETTING IS DIFFERENT
   ret = stringCopy(structRamBase+field[index].offset, value, field[index].size);
   if (ret){
     sprint(1, "INVALID VALUE FOR", field[index].name);
@@ -653,31 +778,6 @@ void setSetting(int index, char* value){
     sprint(1, "STORED VALUE", structRamBase+field[index].offset);  
   }
 }
-//void setSetting(char* setting, char* value){
-//  bool ret = 0;
-///////////////
-///////////////// CHANGE THIS TO USE THE FIND INDEX FUNCTION
-//////////////// AND DO NOT STORE IN FLASH
-//////////////// MAKE A SEPARATE FUNCTION TO STORE THE ENTIRE STRUCT, EVEN IF JUST A SETTING IS DIFFERENT
-////////////////
-//  for (int i=0; i<numberOfFields; i++){
-//    if (strcmp(field[i].name, setting) == 0){
-//      ret = stringCopy(structRamBase+field[i].offset, value, field[i].size);
-//      //// SEND A MESSAGE IF THE GIVEN VALUE IS INVALID/TRUNCATED?
-//      if (ret){
-//        sprint(1, "INVALID VALUE FOR", field[i].name);
-//        sprint(1, "Value", value);  
-//      }else{
-//        sprint(1, "STORED VALUE", structRamBase+field[i].offset);  
-//      }
-//      EEPROM.begin(512);
-//      updateFlashField(structRamBase+field[i].offset, cfgStartAddr+field[i].offset, field[i].size);
-//      EEPROM.end();
-//      break;     
-//    }
-//  }
-//}
-
 
 
 /*

@@ -1,8 +1,7 @@
 /* 
  *  Configuration Settings
  *  Max flash: 512 bytes
- *  Use macro SAVECFG(setting)to save a setting to flash (eeprom_utils)
- *  
+ *    
  *  ITEMS TO ADD:
  *  SITE ADDRESS TO GET PUBLIC IP
  *  ERROR COUNTERS
@@ -79,3 +78,4 @@ struct Field_s field[] = {
 };
 
 const int numberOfFields = NUM_ELEMS(field);
+bool unsavedChanges = true; /* flag used by wifi and mqtt broker to signal when ram and flash are different */

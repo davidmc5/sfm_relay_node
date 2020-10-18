@@ -45,7 +45,6 @@ void removeChar( char* str, char t ){
 
 ///////////
 //temporary function to retrieve ssid/pswd after a fw upgrade before changing the configuration settings. 
-
 /*
  * Steps -- on setup before anything else takes place...
  * 1) check if 'ok' is in the expected position. If not, check if new position. else ?
@@ -53,12 +52,6 @@ void removeChar( char* str, char t ){
  * 3) retrieve from file the broker's settings
  * 4) store config settings to new structure 
  */
-
- 
-
-////////////////////////
-// USE saveWifiCredentials() to store.
-////////////////////////////////////////////////////
 void fixSettings(){
   /*
    * Note: Currently only migrate wifi ssid/pswd
@@ -90,7 +83,8 @@ void fixSettings(){
       /* migrate pswd */
       readFlashString(startAddr+23, 20);    
       strcpy(cfgSettings.ap_pswd, tempBuffer);
-      saveWifiCredentials();
+//      saveWifiCredentials();
+      saveAll();
     }
     
     //fix for fw < 1.18
@@ -108,7 +102,8 @@ void fixSettings(){
         /* migrate pswd */
         readFlashString(startAddr+32, 32);    
         strcpy(cfgSettings.ap_pswd, tempBuffer);
-        saveWifiCredentials();
+//        saveWifiCredentials();
+        saveAll();
       }
     }
   }

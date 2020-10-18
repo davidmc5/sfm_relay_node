@@ -58,16 +58,24 @@ void startAP(){
   
   server.begin(); // Web server start
   sprint(2, "HTTP server started",);
-
-  loadWifiCredentials(); // Load WLAN credentials from flash
-  connect = strlen(cfgSettings.ap_ssid) > 0; // Request WLAN connect (TRUE) if there is a SSID (of non-zero length)
+  /* Request WLAN connect (TRUE) if there is a SSID (of non-zero length) */
+  connect = strlen(cfgSettings.ap_ssid) > 0; 
  }
+
+/*
+ * manageWifi()
+ * 
+ * Checks if connected to wifi
+ * if not, attempt to connect
+ */
 
 /* manage connection to AP */
  void manageWifi(){
   if (connect) {    
     sprint(2, "WiFi Client Connect Request to", cfgSettings.ap_ssid);    
     connect = false;
+    /// SINCE WE ARE CONNECTING TO WIFI WE NEED TO SET THE MQTT BROKERS AS OFFLINE
+    resetMqttBrokerStates();
     connectWifi(); /* connect to the stored access point */
     lastConnectTry = millis();
   }    
@@ -77,11 +85,9 @@ void startAP(){
   if (s == 0 && millis() > (lastConnectTry + 60000)) {
     connect = true;
   }
-
   if (wifiStatus != s) {
     sprint(2, "WiFi Status Changed From", wifiStates[wifiStatus]);
-    sprint(2, "To WiFi Status of", wifiStates[s]);
-    
+    sprint(2, "To WiFi Status of", wifiStates[s]);    
     wifiStatus = s;
     if (s == WL_CONNECTED) {
       /* Just connected to WLAN */
@@ -96,8 +102,6 @@ void startAP(){
         // Add service to MDNS-SD
         MDNS.addService("http", "tcp", 80);
       }
-
-
      /* 
       * Set a unique client id to connect to mqtt broker (client prefix + node's mac)
       * This assignement needs to be done after succesful connection to wifi 
@@ -108,8 +112,7 @@ void startAP(){
       */       
       strcpy(mqttClientId, mqttClientPrefix);
       strcat(mqttClientId, nodeId);
-
-      
+     
       /* get public IP */
       HTTPClient http;
       //////////////////////////////////////////////////////////
@@ -125,16 +128,24 @@ void startAP(){
         sprint(2,"Public IP", wanIp);
       }
       http.end();   //Close connection
-    
+      /* Save wifi AP settigns since we were able to connect to the internet */
+      saveAll();
+      
     } else {
-        /* Not connected to WiFI - Clear IPs*/
+        /* Not connected to WiFI yet - Clear IPs*/
         strcpy(wanIp, "0.0.0.0");
         if (s == WL_NO_SSID_AVAIL) {
           WiFi.disconnect();
         }
+        resetMqttBrokerStates(); /* set brokers' status in failed mode */
+        /* count the reconnect attempts */
+        wifiReconnects++;
+        sprint(1, "Reconnect Attempt", wifiReconnects); 
       }
     }
     if (s == WL_CONNECTED) {
+      ////////WHAT IS THIS FOR??????????
+      /////////////////////////////////
       MDNS.update();
     }
  }
@@ -142,10 +153,8 @@ void startAP(){
 
  void connectWifi() {
   sprint(2, "Connecting to WiFi AP", cfgSettings.ap_ssid);
-  
   WiFi.disconnect();
   WiFi.begin(cfgSettings.ap_ssid, cfgSettings.ap_pswd);
-  
   int connStatus = WiFi.waitForConnectResult();
   sprint(2, "WiFi Connect Result", wifiStates[connStatus]);
  }

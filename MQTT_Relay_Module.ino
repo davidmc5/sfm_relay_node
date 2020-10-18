@@ -1,5 +1,5 @@
 
-#define FW_VERSION "1.30"
+#define FW_VERSION "1.31"
 //adding mqtt last will for node online/offline
 
 /* 
@@ -22,7 +22,7 @@
  *    1 = ALERT & DEBUG
  *    2 = ALERT & DEBUG & INFO
 */
-#define DEBUG 1 // Print all levels. Comment this out to disable console messages on production.
+#define DEBUG 2 // Print all levels. Comment this out to disable console messages on production.
 
 #define BAUD 9600 // Debug Serial baud rate.
 //#define BAUD 115200 // Debug Serial baud rate.
@@ -191,6 +191,12 @@ IPAddress netMsk(255, 255, 255, 0);
 
 /** Connect to WLAN? */
 boolean connect;
+/*
+ * wifiReconnects counts the number of reconnect attepts to try a different ssid
+ * it is set by mqtt/testSettings()
+ * it is tested, incremented and reset by wifi/manageWifi()
+ */
+int wifiReconnects = 0; 
 
 /** Last time connected to WLAN */
 unsigned long lastConnectTry = 0;
@@ -206,8 +212,12 @@ char *topics[maxTopics]; /* this array holds the pointers to each topic token. *
 char rawTopic[mqttMaxTopicLength]; /* will have the same string as the given 'topic' buffer but with '/' replaced with '/0' */
 char mqttPayload[mqttMaxPayloadLength];
 char mqttClientId[20]; /* Unique client ID (clientPrefix+MAC) to connect to mqtt broker. Used by the mqtt module: mqttClient.connect()*/ 
-uint8_t mqttStatusA = 1; /* Primary mqtt broker status flag. 1=failed / 0 = OK */
-uint8_t mqttStatusB = 1; /* Backup mqtt broker status flag. 1=failed / 0 = OK */
+//REPLACE MQTTSTATUS WITH  mqttBrokerUp
+//AND CHANGE LOGIC 
+uint8_t mqttBrokerUpA = 0; /* Primary mqtt broker status flag. 1=failed / 0 = OK */
+uint8_t mqttBrokerUpB = 0; /* Backup mqtt broker status flag. 1=failed / 0 = OK */
+//uint8_t mqttStatusA = 1; /* Primary mqtt broker status flag. 1=failed / 0 = OK */
+//uint8_t mqttStatusB = 1; /* Backup mqtt broker status flag. 1=failed / 0 = OK */
 uint8_t mqttBrokerState = 0; /* state machine for sending updates -- see mqtt module */
 uint8_t mqttErrorCounter = 0; /* used to reset mqtt broker settings to defaults */
 
@@ -299,6 +309,17 @@ void setup() {
 
   delay(1000); //not sure if this delay is needed
 
+  /* load configuration settings from flash to ram */
+  getCfgSettings();
+  ///////////////////////////////////////
+  //// TODO >>>> if first time (OK not found), load default settings TO RAM 
+  ////  and remove below
+  /* Clear wifi ssid/pswd invalid settings if first time (garbage in flash) */
+  if ( strcmp(cfgSettings.firstRun, "OK") != 0){
+    strcpy(cfgSettings.ap_ssid, "<no ssid>");
+    strcpy(cfgSettings.ap_pswd, "<no password>");
+  }
+
   /* Intitialize serial port to print console mesages if DEBUG mode is set */
   serialInit();
 
@@ -313,12 +334,6 @@ void setup() {
 
 /////////////////////////////////////
   fixSettings(); //remove after this release 1.22
-//  strcpy(cfgSettings.mqttUserB, "Hello!");
-//  strcpy(cfgSettings.mqttPasswordB, "Goodbye!");
-//  SAVECFG(mqttUserB);
-//  SAVECFG(mqttPasswordB);
-
-  //saveSettings();
 ////////////////////////////////////
 
   

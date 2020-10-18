@@ -178,12 +178,19 @@ void handleWifi() {
   server.client().stop(); // Stop is needed because we sent no content length
 }
 
-/** Handle the WLAN save form and redirect to WLAN config page again */
+/*
+ * handleWifiSave()
+ * 
+ * Handle the WLAN save form and redirect to WLAN config page again
+ * https://techtutorialsx.com/2016/10/22/esp8266-webserver-getting-query-parameters/
+ */
 void handleWifiSave() {
-//  Serial.println("wifi save");
-  sprint(2, "WiFi Save",);
-
+  sprint(2, "WiFi Save", cfgSettings.ap_ssid);
+  /* save the given ssid to ram struct field */
+  /* argument name='n' from html"<input type='text' placeholder='ssid' name='n' id='ssid' />" */
   server.arg("n").toCharArray(cfgSettings.ap_ssid, sizeof(cfgSettings.ap_ssid) - 1);
+  /* save the given wifi password to ram struct field */
+  /* argument name='p' from html "<input type='password' placeholder='password' name='p' id='pswd' />" */
   server.arg("p").toCharArray(cfgSettings.ap_pswd, sizeof(cfgSettings.ap_pswd) - 1);
   server.sendHeader("Location", "wifi", true);
   server.sendHeader("Cache-Control", "no-cache, no-store, must-revalidate");
@@ -191,7 +198,10 @@ void handleWifiSave() {
   server.sendHeader("Expires", "-1");
   server.send(302, "text/plain", "");    // Empty content inhibits Content-length header so we have to close the socket ourselves.
   server.client().stop(); // Stop is needed because we sent no content length
-  saveWifiCredentials(); /* save to flash */
+  ///////
+//  saveWifiCredentials(); /* save to flash */
+//  saveAll(); /* save given wifi ssid/pswd to flash */
+  //////////
   connect = strlen(cfgSettings.ap_ssid) > 0; // Request WLAN connect with new credentials if there is a SSID
 }
 

@@ -1,35 +1,17 @@
 /*
- * SAVECFG(M)
- * Macro to store a single struct field M in FLASH
- * Flash Size of ESP-WROOM-02 is 512 bytes
- * https://www.embedded.com/learn-a-new-trick-with-the-offsetof-macro/
- * https://stackoverflow.com/questions/53232911/arduino-esp8266-read-string-from-eeprom
- */
-#define SAVECFG(M)\
-  EEPROM.begin(512);  \
-  /* Calculate the starting eeprom address of the given structure member M */ \
-  /* cfgStartAddr is the starting address of the struct in the eeprom */ \
-  /* offsetof(apStruct_t, M)) is the member offset from the start of the struct; */ \
-  EEPROM.put(cfgStartAddr+offsetof(cfgSettings_s, M), cfgSettings.M);   \
-  delay(200);\
-  EEPROM.end();\
-  //Example to store the struct member 'ap_pswd': 
-  //SAVECFG(ap_pswd);
-
-
-/*
  * saveAll()
  * 
  * Saves all the current settings in RAM to FLASH
+ * First set the value(s) in ram using mqtt/setSetting()
  */
 void saveAll(){
+  sprint(1,"SAVING CONFIGURATION SETTINGS TO FLASH -- eeprom/saveAll()",);
   EEPROM.begin(512);
   EEPROM.put(cfgStartAddr, cfgSettings);
   delay(200);
   EEPROM.end();
+  unsavedChanges = false; /* ram and flash settings now match */
 }
-
-
 
 
 
@@ -40,36 +22,9 @@ void saveAll(){
 void getCfgSettings(struct cfgSettings_s *structSettings){
   EEPROM.begin(512);
   EEPROM.get(cfgStartAddr, *structSettings);
-// EEPROM.get(cfgStartAddr, cfgSettings);
   EEPROM.end();
-  delay(200); /////////////////////////////////////
+  delay(200);
  }
-
-
-void loadWifiCredentials() {
-  getCfgSettings(&cfgSettings);    
-//  getCfgSettings();    
-  /* if it is the first time to connect to wifi (no "OK" stored), ignore current eeprom contents */  
-  if ( strcmp(cfgSettings.firstRun, "OK") != 0){
-    strcpy(cfgSettings.ap_ssid, "<no ssid>");
-    strcpy(cfgSettings.ap_pswd, "<no password>");
-  }
-  sprint(2, "Connecting to WiFi", cfgSettings.ap_ssid);
-  //sprint(2, "Password", cfgSettings.ap_pswd);
-}
-
-
-/*
-//Convert this function to save all settings that have changed
-//TODO: CHECK CURRENT FLASH CONTENTS. DO NOT WRITE IF THEY ARE THE SAME
-*/
-void saveWifiCredentials() {
-  SAVECFG(ap_ssid);
-  SAVECFG(ap_pswd);
-  strcpy(cfgSettings.firstRun, "OK");
-  SAVECFG(firstRun);
-  sprint(1, "SAVING WIFI AND FIRST RUN FLAG (EEPROM_UTILS)",);
-}
 
 
 
@@ -104,9 +59,6 @@ int stringCopy(char* dest, char* source, int dest_size){
   }
   return ret;
 }
-
-
-
 
 
 /*
@@ -226,3 +178,49 @@ void readFlashString(int addr, int maxLength){
   tempBuffer[len]='\0';
   EEPROM.end();
 }
+
+
+/////////////////////////////
+/// OLD -- TO DELETE
+///////////////////////////
+
+//void loadWifiCredentials() {
+//  /* if it is the first time to connect to wifi (no "OK" stored), ignore current eeprom contents */  
+//  if ( strcmp(cfgSettings.firstRun, "OK") != 0){
+//    strcpy(cfgSettings.ap_ssid, "<no ssid>");
+//    strcpy(cfgSettings.ap_pswd, "<no password>");
+//  }
+//  sprint(2, "Connecting to WiFi", cfgSettings.ap_ssid);
+//}
+
+
+/*
+//Convert this function to save all settings that have changed
+//TODO: CHECK CURRENT FLASH CONTENTS. DO NOT WRITE IF THEY ARE THE SAME
+*/
+//void saveWifiCredentials() {
+//  SAVECFG(ap_ssid);
+//  SAVECFG(ap_pswd);
+//  strcpy(cfgSettings.firstRun, "OK");
+//  SAVECFG(firstRun);
+//  sprint(1, "SAVING WIFI AND FIRST RUN FLAG (EEPROM_UTILS)",);
+//}
+
+
+/*
+ * SAVECFG(M)
+ * Macro to store a single struct field M in FLASH
+ * Flash Size of ESP-WROOM-02 is 512 bytes
+ * https://www.embedded.com/learn-a-new-trick-with-the-offsetof-macro/
+ * https://stackoverflow.com/questions/53232911/arduino-esp8266-read-string-from-eeprom
+ */
+//#define SAVECFG(M)\
+//  EEPROM.begin(512);  \
+//  /* Calculate the starting eeprom address of the given structure member M */ \
+//  /* cfgStartAddr is the starting address of the struct in the eeprom */ \
+//  /* offsetof(apStruct_t, M)) is the member offset from the start of the struct; */ \
+//  EEPROM.put(cfgStartAddr+offsetof(cfgSettings_s, M), cfgSettings.M);   \
+//  delay(200);\
+//  EEPROM.end();\
+//  //Example to store the struct member 'ap_pswd': 
+//  //SAVECFG(ap_pswd);
