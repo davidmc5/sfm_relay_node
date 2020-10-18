@@ -78,4 +78,4 @@ struct Field_s field[] = {
 };
 
 const int numberOfFields = NUM_ELEMS(field);
-bool unsavedChanges = true; /* flag used by wifi and mqtt broker to signal when ram and flash are different */
+bool unsavedChanges = false; /* flag to signal when ram and flash settings are different - Reset by saveAll() */

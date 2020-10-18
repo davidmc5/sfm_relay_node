@@ -25,25 +25,26 @@
  */
 
 
-/*
- * testSettings()
- * 
- * Test if current settings in ram allow connecting to wifi and mqtt broker
- * If unable to connect to both after a number of retries, retrieve settings from flash
- * TODO: Store up to 4 known good wifi settings and test them in sequence during an outage
- * If mqtt fails from both flash and ram, retrieve mqtt broker defaults from file (but not wifi!)
- * 
- */
-void testSettings(){
-  /* test wifi -- force a connect attempt using ram settings */
-  sprint (1, "WIFI RECONNECT",);
-  wifiReconnects = 0; /* reset error counter */
-  connect = true; /* force wifi to reconnect to the settings on ram */
-  ;
-
-  /* test mqtt brokers */
-  ;
-}
+///*
+// * testSettings()
+// * 
+// * Test, before saving to flash,  asses if current settings in ram allow connecting to BOTH wifi and mqtt broker(s)
+// * If unable to connect to BOTH after a number of retries, retrieve settings from flash and test again
+// * If mqtt fails from both flash and ram, retrieve mqtt broker defaults
+// * 
+// * FUTURE: Store the last two known good wifi settings and test them in sequence during an outage
+// */
+//void testWifi(){
+//  /* test wifi -- force a connect attempt using ram settings */
+//  sprint (1, "WIFI TEST",);
+//  wifiReconnects = 0; /* reset error counter */
+//  //wifiTest = true;
+//  connect = true; /* force wifi to reconnect using current settings on ram */
+//  ;
+//
+//  /* test mqtt brokers */
+//  ;
+//}
 
 
 
@@ -79,6 +80,7 @@ void resetMqttBrokerStates(){
 
 /* 
  *  manageMqtt()
+ *  
  *  Implements and update a state machine to monitor brokers
  *  Publishes different mqtt status messages depending on broker failures
  *  If both brokers are down, try to reconnect to both
@@ -98,7 +100,6 @@ void manageMqtt(){
         checkMqttBrokers();
        
         if (mqttBrokerUpA || mqttBrokerUpB){ //at least one broker is up
-//          mqttBrokerState = 1; //next state
           mqttNextState(1);
           mqttBrokerOnline(); /* publish online status */
           sendRestart(); /* Publish node's restart code (crash message) only once after boot */ 
@@ -119,16 +120,12 @@ void manageMqtt(){
         checkMqttBrokers(); 
         if (!mqttBrokerUpA && !mqttBrokerUpB){ //both brokers are down. Can't send messages!
           mqttNextState(3);
-//          mqttBrokerState = 3; //next state
-//          blinker.attach(0.5, changeState); //blink LED
         }else if(!mqttBrokerUpA || !mqttBrokerUpB){ //one broker is down
-//          mqttBrokerState = 2;
           mqttNextState(2);
           sendStatus();          
         }
         break;
 
-//case 3: 
       case 2: 
         // One broker failed. Wait here until full recovery or until both brokers fail
         // DO NOT check connectivity here becausue it adds too much delay 
@@ -137,29 +134,23 @@ void manageMqtt(){
         if (!mqttClientA.connected()) { mqttBrokerUpA = 0;} /* node not connected to primary broker)*/
         if (!mqttClientB.connected()) { mqttBrokerUpB = 0;} /* node not connected to backup broker)*/      
         if (mqttBrokerUpA && mqttBrokerUpB){ //both brokers recovered
-//          mqttBrokerState = 1;
           mqttNextState(1);
           mqttBrokerOnline(); /* publish online status and stop LED from blinking */
         }else if (!mqttBrokerUpA && !mqttBrokerUpB){ //both brokers down - Can't send status updates
-//          mqttBrokerState = 3;
-//          blinker.attach(0.5, changeState); //blink LED
             mqttNextState(3);
         }
         mqttErrorCounter = 0;
         break;  
 
-//case 2: 
       case 3: 
         //Both brokers are down. Wait here until at least one recovers
         checkMqttBrokers();
         if (mqttBrokerUpA && mqttBrokerUpB){ //both brokers recovered
-//          mqttBrokerState = 1;
           mqttNextState(1);
           mqttErrorCounter = 0;
           mqttBrokerOnline(); /* publish online status and stop LED from blinking */
         }
         else if(mqttBrokerUpA + mqttBrokerUpB == 1){ //only one broker recovered
-//          mqttBrokerState = 0; /* start again from inital state to recheck the other broker */
           mqttNextState(0);
           mqttErrorCounter = 0;
           mqttBrokerOnline(); /* publish online status and stop LED from blinking */
@@ -321,6 +312,8 @@ void checkMqttBrokers(){
 
 ///MQTT CALLBACKS
 
+
+
 /* wrappers to include the primary or backup identifiers to the received messages */
 void mqttCallbackA(char* topic, byte* payload, unsigned int length){
   mqttCallback("PRI", topic, payload, length);
@@ -329,33 +322,35 @@ void mqttCallbackB(char* topic, byte* payload, unsigned int length){
   mqttCallback("BAK", topic, payload, length);
 }
 
+
+
+
 /* 
  *  mqttCallback()
- *  Called when MQTT messages from either broker for this nodeid are received
+ *  
+ *  Called when MQTT messages for this nodeid are received from either broker
  */
 void mqttCallback(char* broker, char* topic, byte* payload, unsigned int length) {
-  mqttMsgCheck(topic, payload, length); /* print a debub message if topic or payload strings are longer than buffers */
+  /* send an alert if topic or payload strings are longer than buffers */
+  mqttMsgCheck(topic, payload, length); 
   /* copy the received bytes from payload to mqttPayload array */
   for (int i=0; i < length; i++){
     mqttPayload[i] = (char)payload[i];
   }
   mqttPayload[length]= NULL; /* add null termination for string */
-  
   sprint(2, "MQTT BROKER", broker);  
-  sprint(2, "MQTT Incomming - Topic", topic);  
-  sprint(2, "MQTT Payload", mqttPayload);  
+  sprint(2, topic, mqttPayload);  
   /* 
    *  Parse received mqtt topic into an array of pointers
    *  
    *  Replace the delimiters '/' with null '/0' 
    *  and store the pointer of the start of each topic substring into  topics[] 
-   *  Note that the given 'topic' buffer can't be written to replace the / with null 
-   *  so we need to move the topic strig to the array rawTopics so we can replace the delimiters to form substrings
-  */  
-  
+   *  Note that the given 'topic' buffer can't be written to. 
+   *  So we can't replace the '/' with a null strill termination on the returned buffer.
+   *  Instead, we need to copy the received topic string to an array (rawTopics) 
+   *  in order to replace the delimiters and form substrings
+  */    
   /* Copy the topic string to a read/write array including the null string terminator*/
-  /* Place each topic token (separated by '/') into the array of pointers topics[] */
-  /* char *topics[maxTopics]will holds the pointers to each subtopic string */
   int topic_length = strlen(topic);
   /* rawTopic[mqttMaxTopicLength] will have the same string as the given 'topic' buffer but with '/' replaced with '/0' */
   char delim = '/';
@@ -364,9 +359,11 @@ void mqttCallback(char* broker, char* topic, byte* payload, unsigned int length)
   for (int i = 0; i<maxTopics; i++){
     topics[i] = NULL;
   }
+  /* char *topics[maxTopics] will hold the pointers to each subtopic string */
   topics[0] = rawTopic; /* we have at least one topic's pointer */
   /* NOTE:  topics[0] IS EITHER THE NODEID(MAC) OR A BROADCAST TOPIC BUT SHOULD NEVER BE NULL*/ 
   for (int i=0 ; i <= topic_length; i++){
+    /* Terminate each topic substring with a '\0' and save the pointer into the array of pointers topics[] */
     if (topic[i] == delim){
       rawTopic[i] = NULL; //end of string delimiter
       topics[numTopics++] = rawTopic+i+1; /* store the pointer to the next location after the delimeter */
@@ -451,7 +448,9 @@ void mqttCallback(char* broker, char* topic, byte* payload, unsigned int length)
       if (topics[2]){ //If not a null pointer
         if (strcmp(topics[2], "saveAll") == 0){
           /* save current config values in RMA to FLASH */
-          saveAll();
+//          testSettings();
+          connect = true; /* force wifi to reconnect using current settings on ram */
+          //saveAll();
         }else if (strlen(topics[2])< 1) {
           /* no topic (just the string termination null character) */
           configSettings("all"); 
@@ -494,6 +493,7 @@ void mqttCallback(char* broker, char* topic, byte* payload, unsigned int length)
 
 /*
  *   mqttMsgCheck()
+ *   
  *   Verify topic length of the message received is within limits
  */
 void mqttMsgCheck(char* topic, byte* payload, unsigned int payloadLength){  
@@ -515,6 +515,7 @@ void mqttMsgCheck(char* topic, byte* payload, unsigned int payloadLength){
 
 /*
  * sendRestart()
+ * 
  * Publishes the last restart code (normal/crash, etc)
  * Using mqttTopic and mqttPayload arrays defined globally
  */
@@ -530,16 +531,18 @@ void sendRestart(){
 
 
 
-////THIS MIGHT JUST BE NEEDED FOR GRACEFUL DISCONNECTS
-/// BY PASSING AN OPTIONAL ARGUMENT
+////THIS MIGHT BE NEEDED FOR GRACEFUL DISCONNECTS
+/// BY PASSING AN OPTIONAL "GOING OFFLINE" ARGUMENT
 ///boolean connect (clientID, [username, password], [willTopic, willQoS, willRetain, willMessage], [cleanSession])
 /*
  * sendState()
+ * 
  * send a connect/online message (payload = 1) on boot
  * (see state 0 of state machine of manageMqtt)
+ * 
  * FUTURE USE: Add argument for offline envent to send a graceful disconnect message (payload=0)
- * this will prevent sending the last will
- * See checkMqttBrokers() for last will connect message
+ * this will update the status t offline without sending the last_will
+ * See checkMqttBrokers() for last_will connect message
  */
 void sendState(){
   /* publish the initial node state topic with the retained flag ('true')*/
@@ -563,6 +566,7 @@ void sendState(){
 ////////////////////////////////////////////////////////////
 /* 
  * sendStatus()
+ * 
  * sends the following fields as payload separated by ':'
  *
  *  fw ver
@@ -722,10 +726,10 @@ void publishIndex(int index){
       /* place value of current field to payload */
       strcpy(mqttPayload, structRamBase+field[index].offset);
   }else{
-      /* ram and flash settings are different. Set the flag for unsaved changes */
-      unsavedChanges = true; /* this flag is unset to flase by eeprom/saveAll() */
-      /* Publish both and prefix the payload with an asterisk */      
-      strcpy(mqttPayload, "*");  /* flag to highlight the log */        
+      /* ram and flash settings are now different. Set the flag for unsaved changes */
+      unsavedChanges = true; /* this flag is reset by eeprom/saveAll() */
+      /* Publish both values */      
+      strcpy(mqttPayload, "CHANGE -----> :");  /* flag to highlight the log */        
       strcat(mqttPayload, structRamBase+field[index].offset);
       strcat(mqttPayload, ":");
       strcat(mqttPayload, structFlashBase+field[index].offset);      
@@ -763,6 +767,7 @@ void publishError(char *setting){
 
 /*
  *   setSetting()
+ *   
  *   store the given setting value in flash
  *   /////////////////////////////////////////////////////
  *   INSTEAD OF STORING ONE SETTING AT A TIME, JUST SAVE THE ENTIRE STRUCT WHEN MULTIPLE VALUES NEED TO BE CHANGED (WIFI/BROKERS)
@@ -789,7 +794,6 @@ void setSetting(int index, char* value){
 int getFieldIndex(char * confSetting){
   bool found = 0;
   int i;
-//  for (i=0; i< NUM_ELEMS(field); i++){
   for (i=0; i< numberOfFields; i++){
     /* check if value in flash is the same as value in active config in ram */
     if (strcmp(field[i].name, confSetting) == 0){
@@ -800,4 +804,28 @@ int getFieldIndex(char * confSetting){
   }
   /* return field index or -1 if not found */
   return (found) ? i : ERROR;
+}
+
+
+
+/*
+ * unsavedSettings()
+ * 
+ * Find if ram and flash values match
+ * return 0 if match
+ * return 1 if differnt (unsaved changes)
+ */
+bool unsavedSettings(){
+  int i;
+  bool changesFound = false;
+  /* read values from flash into TEMP/FLASH struct */ 
+  getCfgSettings(&cfgSettingsTemp);  
+  for (i=0; i< numberOfFields; i++){
+  /* Check if the value in flash is the same as value in active config in ram */
+    if (strcmp(structRamBase+field[i].offset, structFlashBase+field[i].offset) != 0){
+      changesFound = true;
+      break; 
+    }
+  }
+  return changesFound;
 }

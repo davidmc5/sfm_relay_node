@@ -1,6 +1,8 @@
 
-#define FW_VERSION "1.31"
-//adding mqtt last will for node online/offline
+#define FW_VERSION "1.32"
+//add verification for wifi changes. Revert to flash settings on failure
+
+
 
 /* 
  * To compile and upload with Arduino IDE: 
@@ -22,7 +24,7 @@
  *    1 = ALERT & DEBUG
  *    2 = ALERT & DEBUG & INFO
 */
-#define DEBUG 2 // Print all levels. Comment this out to disable console messages on production.
+#define DEBUG 2 //Comment this out to disable console messages on production.
 
 #define BAUD 9600 // Debug Serial baud rate.
 //#define BAUD 115200 // Debug Serial baud rate.
@@ -189,14 +191,17 @@ IPAddress apIP(192, 168, 4, 1);
 IPAddress netMsk(255, 255, 255, 0);
 
 
-/** Connect to WLAN? */
+/** Connect to wifi WLAN? */
 boolean connect;
+
 /*
  * wifiReconnects counts the number of reconnect attepts to try a different ssid
  * it is set by mqtt/testSettings()
  * it is tested, incremented and reset by wifi/manageWifi()
  */
 int wifiReconnects = 0; 
+/* flag to indicate a wifi reconnect test was succesful */
+bool wifiTestOk = false;
 
 /** Last time connected to WLAN */
 unsigned long lastConnectTry = 0;
@@ -306,11 +311,10 @@ PubSubClient mqttClientB(espClientB);
 /* SETUP */
 /////////////////
 void setup() {
-
-  delay(1000); //not sure if this delay is needed
-
-  /* load configuration settings from flash to ram */
-  getCfgSettings();
+  delay(1000); ////// Not sure what's this delay for or if it's really needed!
+  
+  getCfgSettings();  /* load configuration settings from flash to ram */
+  unsavedChanges = false; /* flash and ram settings are identical */
   ///////////////////////////////////////
   //// TODO >>>> if first time (OK not found), load default settings TO RAM 
   ////  and remove below
@@ -333,7 +337,7 @@ void setup() {
   WiFi.persistent(false);
 
 /////////////////////////////////////
-  fixSettings(); //remove after this release 1.22
+//  fixSettings(); //remove after this release 1.22
 ////////////////////////////////////
 
   

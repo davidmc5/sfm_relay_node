@@ -73,30 +73,41 @@ void startAP(){
  void manageWifi(){
   if (connect) {    
     sprint(2, "WiFi Client Connect Request to", cfgSettings.ap_ssid);    
-    connect = false;
-    /// SINCE WE ARE CONNECTING TO WIFI WE NEED TO SET THE MQTT BROKERS AS OFFLINE
+    connect = false; /* reset the flag back to normal to prevent continuous looping - we are setting a timer */
+    /// SINCE WE ARE CONNECTING TO WIFI WE NEED TO SET THE MQTT BROKERS OFFLINE
     resetMqttBrokerStates();
     connectWifi(); /* connect to the stored access point */
-    lastConnectTry = millis();
-  }    
+    lastConnectTry = millis(); /* set a timer */
+  }
   unsigned int s = WiFi.status();
-  /* If WLAN disconnected and idle try to reconnect */
+  /* If WLAN is disconnected and idle try to reconnect */
   /* Don't set retry time too low as it will interfere with the softAP operation */
   if (s == 0 && millis() > (lastConnectTry + 60000)) {
-    connect = true;
+    /* discard all unsaves setting changes and restore previous settings from flash */
+    getCfgSettings();
+    wifiTestOk = false;
+    connect = true; /* set the reconnect flag back to retry with previous settings */
   }
   if (wifiStatus != s) {
     sprint(2, "WiFi Status Changed From", wifiStates[wifiStatus]);
-    sprint(2, "To WiFi Status of", wifiStates[s]);    
+    sprint(2, "WiFi Status Changed To", wifiStates[s]);    
     wifiStatus = s;
     if (s == WL_CONNECTED) {
       /* Just connected to WLAN */
       sprint(2, "WiFI Client Connected To", cfgSettings.ap_ssid);
       sprint(2, "WiFi Client IP Address", WiFi.localIP());
+      //// If the flash and ram settings are different, it passed the wifi test without reverting to flash.
+      if (unsavedSettings()){
+        wifiTestOk = true;
+        sprint(1, "WIFI TEST OK -- SAVING SETTINGS",);
+        saveAll();
+      }     
 
+      /// MDNS DOES NOT SEEM TO WORK SOMETIMES... ADDING A SMALL DELAY...
+      delay(300);
       // Setup MDNS responder
       if (!MDNS.begin(myHostname)) {
-        sprint(0, "Error setting up MDNS responder!", myHostname);
+        sprint(0, "Error setting up MDNS responder! (ADDED SOME DELAY)", myHostname);
       } else {
         sprint(2, "mDNS responder started", myHostname);
         // Add service to MDNS-SD
@@ -128,9 +139,12 @@ void startAP(){
         sprint(2,"Public IP", wanIp);
       }
       http.end();   //Close connection
+
+      /////////////////////
       /* Save wifi AP settigns since we were able to connect to the internet */
-      saveAll();
-      
+      //saveAll(); /////wait to save to flash until confirmed mqtt connectivity to controller(s)
+      /////////////////////
+               
     } else {
         /* Not connected to WiFI yet - Clear IPs*/
         strcpy(wanIp, "0.0.0.0");
@@ -156,5 +170,5 @@ void startAP(){
   WiFi.disconnect();
   WiFi.begin(cfgSettings.ap_ssid, cfgSettings.ap_pswd);
   int connStatus = WiFi.waitForConnectResult();
-  sprint(2, "WiFi Connect Result", wifiStates[connStatus]);
+  sprint(1, "WiFi Connect Result", wifiStates[connStatus]);
  }
