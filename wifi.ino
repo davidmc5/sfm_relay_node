@@ -26,7 +26,8 @@ void startAP(){
   WiFi.softAP(softAP_ssid, softAP_password);
 
   ////not sure if we need this
-  delay(500); // Without delay I've seen the IP address blank
+//  delay(500); // Without delay I've seen the IP address blank
+  delay(200); // Without delay I've seen the IP address blank
   sprint(2, "SoftAP IP Address", WiFi.softAPIP()); 
   
   /* Setup the DNS server redirecting all the domains to the apIP */
@@ -35,9 +36,9 @@ void startAP(){
   // if DNSServer is started with "*" for domain name, it will reply with
   // provided IP to all DNS request
   dnsServer.start(DNS_PORT, "*", apIP);
-
-
-
+//////////
+//////////
+//////////
 //// THIS IS NOT *ONLY* PART OF THE SOFT AP. 
 ///  MOVE IT TO THE SETUP()?
 //// this webserver shows on both softap and wlan interface
@@ -52,8 +53,6 @@ void startAP(){
   server.on("/", handleWifi);
   server.on("/wifi", handleWifi);
   server.on("/wifisave", handleWifiSave);
-//  server.on("/generate_204", handleRoot);  //Android captive portal. Maybe not needed. Might be handled by notFound handler.
-//  server.on("/fwlink", handleRoot);  //Microsoft captive portal. Maybe not needed. Might be handled by notFound handler.
   server.onNotFound(handleNotFound);
   
   server.begin(); // Web server start
@@ -67,98 +66,143 @@ void startAP(){
  * 
  * Checks if connected to wifi
  * if not, attempt to connect
+ * Also connect if the 'connect' flag has been set
+ * this implies a request to test if the current ssid/pswd on ram are correct.
  */
 
 /* manage connection to AP */
  void manageWifi(){
-  if (connect) {    
-    sprint(2, "WiFi Client Connect Request to", cfgSettings.ap_ssid);    
-    connect = false; /* reset the flag back to normal to prevent continuous looping - we are setting a timer */
-    /// SINCE WE ARE CONNECTING TO WIFI WE NEED TO SET THE MQTT BROKERS OFFLINE
+  if (WiFi.status() != WL_CONNECTED){
+    connect = true;
+  }
+  if (connect || !internetUp) { /* Disconnect from current AP and attempt to connect to the ssid on the current ram settings */      
+    sprint(1, "---------------------------------------",);
+    sprint(1,connect, internetUp);
+    sprint(1, "---------------------------------------",);
+   
+    sprint(2, "WiFi Client Connect Request to", cfgSettings.ap_ssid); 
+    lastWifiState = WL_IDLE_STATUS; /* reset current flag to force checking internet access by getting the public IP*/  
+    connect = false; /* reset the flag back to normal to prevent continuous looping - we are also setting a timer */
+    /// SINCE WE ARE CONNECTING TO WIFI WE NEED TO SET THE MQTT BROKERS FLAGS OFFLINE
     resetMqttBrokerStates();
-    connectWifi(); /* connect to the stored access point */
+    connectWifi(); /* Disconnect if already connected and connect to the stored access point */
     lastConnectTry = millis(); /* set a timer */
   }
-  unsigned int s = WiFi.status();
+  unsigned int currentWifiState = WiFi.status();
   /* If WLAN is disconnected and idle try to reconnect */
   /* Don't set retry time too low as it will interfere with the softAP operation */
-  if (s == 0 && millis() > (lastConnectTry + 60000)) {
-    /* discard all unsaves setting changes and restore previous settings from flash */
-    getCfgSettings();
-    wifiTestOk = false;
-    connect = true; /* set the reconnect flag back to retry with previous settings */
+//  if (s == 0 && millis() > (lastConnectTry + 15000)) {
+  if (currentWifiState == 0 && millis() > (lastConnectTry + 15000)) {
+    sprint(0, "RESETTING WIFI - RESTORING SETTINGS FROM FLASH",);
+    /* discard all unsaved setting changes and restore previous settings from flash */
+    getCfgSettings(); /* recover settings from flash */
+    connect = true; /* set the reconnect flag back to retry with recovered flash settings */
   }
-  if (wifiStatus != s) {
-    sprint(2, "WiFi Status Changed From", wifiStates[wifiStatus]);
-    sprint(2, "WiFi Status Changed To", wifiStates[s]);    
-    wifiStatus = s;
-    if (s == WL_CONNECTED) {
+  //
+  if (lastWifiState != currentWifiState) { /* status changed since last loop */
+    sprint(2, "WiFi Status Changed From", wifiStates[lastWifiState]);
+    sprint(2, "WiFi Status Changed To", wifiStates[currentWifiState]);    
+    lastWifiState = currentWifiState;
+    if (currentWifiState == WL_CONNECTED) {
       /* Just connected to WLAN */
       sprint(2, "WiFI Client Connected To", cfgSettings.ap_ssid);
       sprint(2, "WiFi Client IP Address", WiFi.localIP());
-      //// If the flash and ram settings are different, it passed the wifi test without reverting to flash.
-      if (unsavedSettings()){
-        wifiTestOk = true;
-        sprint(1, "WIFI TEST OK -- SAVING SETTINGS",);
-        saveAll();
-      }     
 
-      /// MDNS DOES NOT SEEM TO WORK SOMETIMES... ADDING A SMALL DELAY...
-      delay(300);
-      // Setup MDNS responder
-      if (!MDNS.begin(myHostname)) {
-        sprint(0, "Error setting up MDNS responder! (ADDED SOME DELAY)", myHostname);
-      } else {
-        sprint(2, "mDNS responder started", myHostname);
-        // Add service to MDNS-SD
-        MDNS.addService("http", "tcp", 80);
-      }
-     /* 
-      * Set a unique client id to connect to mqtt broker (client prefix + node's mac)
-      * This assignement needs to be done after succesful connection to wifi 
-      * since we need the wifi module fully operational to query its MAC
-      * Also, it needs to be assigned before connecting to mqtt brokers
-      * If MAC is not yet populated, client IDs from differnt modules will be the same (just the common preffix)
-      * and will disconnect each other when trying to connect to a broker
-      */       
-      strcpy(mqttClientId, mqttClientPrefix);
-      strcat(mqttClientId, nodeId);
-     
-      /* get public IP */
-      HTTPClient http;
-      //////////////////////////////////////////////////////////
-      /////// >>> MAKE THIS SERVICE SITE CONFIGURABLE VIA MQTT
-      //////////////////////////////////////////////////////////
-      http.begin("http://api.ipify.org/?format=text");  
-      int httpCode = http.GET(); //Send the request
-      if (httpCode > 0){
-        /* convert const String (http.getString)to const char* (wanIp) */
-        //http.getString().toCharArray(wanIp, http.getString().length()+1);
-        //another way:
-        sprintf(wanIp, "%s", http.getString().c_str());
-        sprint(2,"Public IP", wanIp);
-      }
-      http.end();   //Close connection
-
-      /////////////////////
-      /* Save wifi AP settigns since we were able to connect to the internet */
-      //saveAll(); /////wait to save to flash until confirmed mqtt connectivity to controller(s)
-      /////////////////////
-               
-    } else {
-        /* Not connected to WiFI yet - Clear IPs*/
-        strcpy(wanIp, "0.0.0.0");
-        if (s == WL_NO_SSID_AVAIL) {
-          WiFi.disconnect();
+        //////////////////////////////////////////////////////
+        /// PLACING THIS BLOCK INSIDE THE CONNECTED BLOCK...
+        /// MDNS DOES NOT SEEM TO WORK SOMETIMES... ADDING A SMALL DELAY...
+        /// and not sure now what mdns does...!?
+        delay(300); //without delay does not work. Trying with some delay...
+        // Setup MDNS responder
+        if (!MDNS.begin(myHostname)) {
+          sprint(0, "Error setting up MDNS responder! (PLACED INSIDE WIFI CONNECTED BLOCK)", myHostname);
+        } else {
+          sprint(2, "mDNS responder started", myHostname);
+          // Add service to MDNS-SD
+          MDNS.addService("http", "tcp", 80);
         }
-        resetMqttBrokerStates(); /* set brokers' status in failed mode */
-        /* count the reconnect attempts */
-        wifiReconnects++;
-        sprint(1, "Reconnect Attempt", wifiReconnects); 
-      }
+        //////////////////////////////////////////////////////
+        /////////   }
+       /* 
+        * Set a unique client id to connect to mqtt broker (client prefix + node's mac)
+        * This assignement needs to be done after succesful connection to wifi (WITH INTERNET TESTED!)
+        * since we need the wifi module fully operational to query its MAC
+        * Also, it needs to be assigned before connecting to mqtt brokers
+        * If MAC is not yet populated, client IDs from differnt modules will be the same (just the common preffix)
+        * and will disconnect each other when trying to connect to a broker
+        */       
+        strcpy(mqttClientId, mqttClientPrefix);
+        strcat(mqttClientId, nodeId);
+       
+        /* get public IP */
+        HTTPClient http;
+        //////////////////////////////////////////////////////////
+        /////// >>> MAKE THIS SERVICE SITE CONFIGURABLE VIA MQTT
+        //////////////////////////////////////////////////////////
+        http.begin("http://api.ipify.org/?format=text");
+        int httpCode = http.GET(); //Send the request
+        if (httpCode > 0){
+          /* convert const String (http.getString)to const char* (wanIp) */
+          //http.getString().toCharArray(wanIp, http.getString().length()+1);
+          //another way:
+          sprintf(wanIp, "%s", http.getString().c_str());
+          sprint(2,"Public IP", wanIp);
+          internetUp = true;
+          //////////////////////////////////////////////////////////
+          ///// SINCE WE ARE CONNECTED TO THE INTERNET WE CAN SET HERE THE WIFI-OK-TO-SAVE-FLAG
+                //// If the flash and ram settings are different, it passed the wifi test without reverting to flash.
+          /////////////////////////////////////////////////////////////
+          // IF RAM AND FLASH ARE DIFFERENT, SINCE WE ARE CONNECTED, IT MEANS THEY ARE GOOD
+          // SO WE CAN SET THE FLAG TO WIFI-OK-TO-SAVE-SO-FAR 
+          // THE SAVE FUNCTION WILL NOT BE EJECUTED UNTIL AT LEAST ONE MQTT BROKER IS ONLINE
+          // 
+          // NOW, DO WE NEED TO SET THIS FLAG ONLY WHEN WE CAN VERIFY INTERNET CONNECTIVITY?
+          //WHAT IS WE WE SUCCEED TO CONNECT TO AN ap THAT DOES NOT HAVE INTERNET?
+          //BETTER WAIT UNTIL WE CAN PING SOMETHING ON THE INTERNET
+          //LIKE WHAT? THE PUBLIC IP? HOW DO WE KNOW IF WE ARE GETTING A VALID PUBLIC IP?
+  
+          if (wifiConfigChanges){ //// CHECK ONLY AP SSID(s) AND PSWD(s)
+            sprint(1, "WIFI TEST COMPLETED SUCCESFULLY. OK TO SAVE SETTINGS",);
+            //////////////////////////////////////
+            // NOW IT IS UP TO THE BROKERS-CHECK FUNCTION TO DECIDE IF A SAVEALL CAN BE DONE, BASED ON THE FLAGS SET.
+            //////////////////////////////////////
+            //////////////////////////////////////
+            // WHAT IF WE ALSO MADE BROKER CHANGES THAT ARE BAD? 
+            // SAVING ALL WILL STORE INVALID SETTINGS IN FLASH 
+            // THAT WILL CAUSE THE DEVICE TO NEVER CONNECT AND REQUIQRE A SITE VISIT!
+            // SAVE ONLY WHEN WE HAVE FULL CONECTIVITY!!
+            // INSTEAD OF SAVEALL WE COULD JUST LET ANOTER PROCESS TEST MQTT BUT ONLY IF THE TEST-SETTINGS FLAG IS SET
+            // IF WIFI & INTERNET TESTS PASSED, AND CURRENTLY CONNECTED, SET FLAG TO TEST MQTT. 
+            // IF IT ALSO CONNECTS, AND SETTINGS ARE DIFFERENT, THEN SAVE 
+            //WHERE ARE WE TESTING MQTT? -> ON THE mqtt/manageMqtt()
+            //WE SET THE MQTT TEST FLAG BY CALLING resetMqttBrokerStates()
+            //////////////////////////////////////////////////////////
+            http.end();   //Close connection     
+        }else{
+          sprint(2, "No WiFI Changes to Save",);
+          }
+       }else{
+          // if http.get return code is less than zero, then we can't assume we are connected to the internet
+          //https://github.com/esp8266/Arduino/issues/5137#issue-360559415
+          //Connected to wifi but no internet access 
+          // try here other wifi APs (including the default for factory testing)
+          sprint(0, "WiFI is Up but No Internet Acess!",); 
+          internetUp = false;
+          connect = true; 
+       }
+      } else {
+          /* Not connected to WiFI yet - Clear IPs*/
+          strcpy(wanIp, "0.0.0.0");
+          resetMqttBrokerStates(); /* set brokers' status in failed mode */
+          if (currentWifiState == WL_NO_SSID_AVAIL) {
+            WiFi.disconnect();
+          }
+        }
     }
-    if (s == WL_CONNECTED) {
-      ////////WHAT IS THIS FOR??????????
+    /* wifi status has not changed since the previous loop */
+    if (currentWifiState == WL_CONNECTED) {
+      //////// WHAT IS THIS FOR??????????
+      // Do we need internet access for tis update to work?
       /////////////////////////////////
       MDNS.update();
     }
@@ -167,8 +211,8 @@ void startAP(){
 
  void connectWifi() {
   sprint(2, "Connecting to WiFi AP", cfgSettings.ap_ssid);
-  WiFi.disconnect();
-  WiFi.begin(cfgSettings.ap_ssid, cfgSettings.ap_pswd);
+  WiFi.disconnect(); /* Disconnect first from current AP, if connected */
+  WiFi.begin(cfgSettings.ap_ssid, cfgSettings.ap_pswd); /* connect to the ssid/pswd in ram */
   int connStatus = WiFi.waitForConnectResult();
-  sprint(1, "WiFi Connect Result", wifiStates[connStatus]);
+  sprint(1, "connectWifi() Result", wifiStates[connStatus]);
  }

@@ -5,6 +5,7 @@
  * First set the value(s) in ram using mqtt/setSetting()
  */
 void saveAll(){
+  saveAllRequest = false; /* reset save all flag */
   if (unsavedChanges){
     sprint(1,"SAVING CONFIGURATION SETTINGS TO FLASH -- eeprom/saveAll()",);
     EEPROM.begin(512);
@@ -22,12 +23,20 @@ void saveAll(){
 /* 
  *  getCfgSettings()
  *  Retrieves ALL config settings on eeprom into the given struct in ram
+ *  Resets the unsavedChanges flag
  */
 void getCfgSettings(struct cfgSettings_s *structSettings){
   EEPROM.begin(512);
   EEPROM.get(cfgStartAddr, *structSettings);
   EEPROM.end();
   delay(200);
+  if(structSettings == &cfgSettings){
+     /* all flash and ram settings now match -> reset all flags to unchanged */
+    unsavedChanges = false; 
+    wifiConfigChanges = false;
+    mqttConfigChanges = false;
+    sprint(1, "FLASH Settings Restored",);
+  }
  }
 
 
@@ -35,6 +44,7 @@ void getCfgSettings(struct cfgSettings_s *structSettings){
 /*
  * STRNCOPY(D, S)
  * stringCopy()
+ * 
  * Safe string copy to prevent and alert of buffer overrun
  */
   //////////////////////////////////////////////////////////////
@@ -188,9 +198,9 @@ int checkConfigSettings(char* sourceStr, int fieldSize){
 //}
 
 
-/////////////////////////////
-/// OLD -- TO DELETE
-///////////////////////////
+///////////////////////////////////
+/// OLD -- TO DELETE FRM HERE DOWN
+///////////////////////////////////
 
 //void loadWifiCredentials() {
 //  /* if it is the first time to connect to wifi (no "OK" stored), ignore current eeprom contents */  

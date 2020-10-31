@@ -60,6 +60,13 @@ struct Field_s{
   int offset;
   int size;
 };
+
+/* 
+ * Do not change the order of the setting below! 
+ * their index is being used by the following functions:
+ * 
+ * mqtt/unsavedSettingsFound()
+ */
 struct Field_s field[] = {
   {"firstRun", 0, 3},
   {"ap_ssid", 3, 20},
@@ -79,3 +86,9 @@ struct Field_s field[] = {
 
 const int numberOfFields = NUM_ELEMS(field);
 bool unsavedChanges = false; /* flag to signal when ram and flash settings are different - Reset by saveAll() */
+//bool changesFound = false; /* flag to signal when ram and flash settings are different - Set by unsavedSettingsFound() - Reset by eeprom/saveAll()*/
+bool wifiConfigChanges = false; /* flag to signal a save request if wifi settings are different between ram and flash */
+bool mqttConfigChanges = false; /* flag to signal a save request if mqtt settings are different between ram and flash */
+bool saveAllRequest = false; /* flag to indicate a save request has been made */
+bool wifiUp = false;
+bool internetUp = false;

@@ -1,6 +1,8 @@
 
-#define FW_VERSION "1.32"
-//add verification for wifi changes. Revert to flash settings on failure
+#define FW_VERSION "1.33"
+//Reduced delay on wifi module:   delay(200); // Without delay I've seen the IP address blank
+// refactoring mqtt and wifi
+// save settings only if mqtt succeeds to connect
 
 
 
@@ -170,7 +172,8 @@ char *debugLevel[] = {"ALERT", "DEBUG", "INFO"};
  * 6 : WL_DISCONNECTED if module is not configured in station mode
  */
 char *wifiStates[] = {"IDLE", "NO SSID", "2:?", "CONNECTED", "INCORRECT PASSWORD", "5:?", "DISCONNECTED"};
-unsigned int wifiStatus = WL_IDLE_STATUS; /* Set initial WiFi status to 'Not connected-Changing between status */
+unsigned int lastWifiState = WL_IDLE_STATUS; /* Set initial WiFi status to 'Not connected-Changing between status */
+//unsigned int wifiStatus = WL_IDLE_STATUS; /* Set initial WiFi status to 'Not connected-Changing between status */
 
 /* Node's info */
 char nodeId[18]; /* wifi MAC - this is the nodeId variable populated by the wifi module */
@@ -183,8 +186,10 @@ char wanIp[20]="0.0.0.0"; /* public IP of the node. Used by controller to determ
 const byte DNS_PORT = 53;
 DNSServer dnsServer;
 
-// Web server
-ESP8266WebServer server(80); ////RENAME 'server' TO 'HTTPServer' TO BE MORE CLEAR WHAT SERVER THAT IS
+/* Web Server */
+ESP8266WebServer server(80); /* Create a webserver object that listens for HTTP request on port 80 */
+void handleRoot();              // function prototypes for HTTP handlers
+void handleNotFound();
 
 /* Soft AP / captive portal network settings */
 IPAddress apIP(192, 168, 4, 1);
@@ -192,16 +197,7 @@ IPAddress netMsk(255, 255, 255, 0);
 
 
 /** Connect to wifi WLAN? */
-boolean connect;
-
-/*
- * wifiReconnects counts the number of reconnect attepts to try a different ssid
- * it is set by mqtt/testSettings()
- * it is tested, incremented and reset by wifi/manageWifi()
- */
-int wifiReconnects = 0; 
-/* flag to indicate a wifi reconnect test was succesful */
-bool wifiTestOk = false;
+boolean connect = true;
 
 /** Last time connected to WLAN */
 unsigned long lastConnectTry = 0;
@@ -217,12 +213,8 @@ char *topics[maxTopics]; /* this array holds the pointers to each topic token. *
 char rawTopic[mqttMaxTopicLength]; /* will have the same string as the given 'topic' buffer but with '/' replaced with '/0' */
 char mqttPayload[mqttMaxPayloadLength];
 char mqttClientId[20]; /* Unique client ID (clientPrefix+MAC) to connect to mqtt broker. Used by the mqtt module: mqttClient.connect()*/ 
-//REPLACE MQTTSTATUS WITH  mqttBrokerUp
-//AND CHANGE LOGIC 
 uint8_t mqttBrokerUpA = 0; /* Primary mqtt broker status flag. 1=failed / 0 = OK */
 uint8_t mqttBrokerUpB = 0; /* Backup mqtt broker status flag. 1=failed / 0 = OK */
-//uint8_t mqttStatusA = 1; /* Primary mqtt broker status flag. 1=failed / 0 = OK */
-//uint8_t mqttStatusB = 1; /* Backup mqtt broker status flag. 1=failed / 0 = OK */
 uint8_t mqttBrokerState = 0; /* state machine for sending updates -- see mqtt module */
 uint8_t mqttErrorCounter = 0; /* used to reset mqtt broker settings to defaults */
 
@@ -286,11 +278,6 @@ void turnAPoff(){
   }
 }
 
-//to test time delay function
-//void turnLEDoff(){
-//  APtimer.detach();
-//  setLED(LED, LED_OFF);
-//}
 
 ////TASK-5
 // Set up mqtt client
@@ -379,18 +366,11 @@ void setup() {
   ////TASK-6 i2c
 
   i2cInit(&relayState); /* Initialize I2C */
-
   /* For testing - Send on/off commands to relays */
   //  setOutput(&relayState, "1", 1); // turn relay 1 on
   //  setOutput(&relayState, "1", 0); // trun relay 1 off
-
-  manageMqtt();
-
-///////////////////////// TESTING
-  //getOffsets();
-
-
   
+  manageMqtt();
 } /* END OF SETUP */
 
 
