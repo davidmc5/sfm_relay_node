@@ -1,6 +1,9 @@
 void startAP(){
 
-  //starts access point and web server
+  /*
+   * Starts the soft access point 
+   * and sets the http server to handle requests via the soft AP as well as the WLAN 
+   */
   
   sprint(2, "Configuring Access Point...", );
   
@@ -26,23 +29,25 @@ void startAP(){
   WiFi.softAP(softAP_ssid, softAP_password);
 
   ////not sure if we need this
-//  delay(500); // Without delay I've seen the IP address blank
   delay(200); // Without delay I've seen the IP address blank
   sprint(2, "SoftAP IP Address", WiFi.softAPIP()); 
   
   /* Setup the DNS server redirecting all the domains to the apIP */
   dnsServer.setErrorReplyCode(DNSReplyCode::NoError);
   
-  // if DNSServer is started with "*" for domain name, it will reply with
-  // provided IP to all DNS request
+  /*
+   * if DNSServer is started with "*" for domain name, it will reply with
+   * provided IP to all DNS request
+   */
   dnsServer.start(DNS_PORT, "*", apIP);
 //////////
 //////////
 //////////
-//// THIS IS NOT *ONLY* PART OF THE SOFT AP. 
-///  MOVE IT TO THE SETUP()?
-//// this webserver shows on both softap and wlan interface
+//// THIS HTTP SERVER IS NOT *ONLY* PART OF THE SOFT AP BUT ALSO SERVES THE WLAN. 
   /*
+   * The httpServer responds to http requests from clients connected to the softAP
+   * as well as clients on the WLAN interface
+   * 
    * Setup web pages: 
    * *root
    * *wifi config
@@ -50,16 +55,18 @@ void startAP(){
    * *not found.
    */
 //  server.on("/", handleRoot);
-  server.on("/", handleWifi);
-  server.on("/wifi", handleWifi);
-  server.on("/wifisave", handleWifiSave);
-  server.onNotFound(handleNotFound);
+  httpServer.on("/", handleWifi);
+  httpServer.on("/wifi", handleWifi);
+  httpServer.on("/wifisave", handleWifiSave);
+  httpServer.onNotFound(handleNotFound);
   
-  server.begin(); // Web server start
+  httpServer.begin(); // Web server start
   sprint(2, "HTTP server started",);
-  /* Request WLAN connect (TRUE) if there is a SSID (of non-zero length) */
+  /* Request to Connect (TRUE) to Access Point if there is a valid SSID (non-zero length) */
   connect = strlen(cfgSettings.ap_ssid) > 0; 
  }
+
+
 
 /*
  * manageWifi()
@@ -75,18 +82,19 @@ void startAP(){
   if (WiFi.status() != WL_CONNECTED){
     connect = true;
   }
-  if (connect || !internetUp) { /* Disconnect from current AP and attempt to connect to the ssid on the current ram settings */      
-    sprint(1, "---------------------------------------",);
-    sprint(1,connect, internetUp);
-    sprint(1, "---------------------------------------",);
-   
-    sprint(2, "WiFi Client Connect Request to", cfgSettings.ap_ssid); 
-    lastWifiState = WL_IDLE_STATUS; /* reset current flag to force checking internet access by getting the public IP*/  
-    connect = false; /* reset the flag back to normal to prevent continuous looping - we are also setting a timer */
-    /// SINCE WE ARE CONNECTING TO WIFI WE NEED TO SET THE MQTT BROKERS FLAGS OFFLINE
-    resetMqttBrokerStates();
-    connectWifi(); /* Disconnect if already connected and connect to the stored access point */
-    lastConnectTry = millis(); /* set a timer */
+  if (connect || !internetUp) { /* Disconnect from current AP and attempt to connect to the ssid on the current ram settings */  
+    connectToWifiAp();    
+//    sprint(1, "---------------------------------------",);
+//    sprint(1,connect, internetUp);
+//    sprint(1, "---------------------------------------",);
+//   
+//    sprint(2, "WiFi Client Connect Request to", cfgSettings.ap_ssid); 
+//    lastWifiState = WL_IDLE_STATUS; /* reset current flag to force checking internet access by getting the public IP*/  
+//    connect = false; /* reset the flag back to normal to prevent continuous looping - we are also setting a timer */
+//    /// SINCE WE ARE CONNECTING TO WIFI WE NEED TO SET THE MQTT BROKERS FLAGS OFFLINE
+//    resetMqttBrokerStates();
+//    connectWifi(); /* Disconnect if already connected and connect to the stored access point */
+//    lastConnectTry = millis(); /* set a timer */
   }
   unsigned int currentWifiState = WiFi.status();
   /* If WLAN is disconnected and idle try to reconnect */
@@ -209,10 +217,31 @@ void startAP(){
  }
 
 
- void connectWifi() {
+
+
+ void connectToWifiAp() {
+  sprint(1, "---------------------------------------",);
+  sprint(1,connect, internetUp);
+  sprint(1, "---------------------------------------",);
+  sprint(2, "WiFi Client Connect Request to", cfgSettings.ap_ssid); 
+  lastWifiState = WL_IDLE_STATUS; /* reset current flag to force checking internet access by getting the public IP*/  
+  connect = false; /* reset the flag back to normal to prevent continuous looping - we are also setting a timer */
+  /// SINCE WE ARE CONNECTING TO WIFI WE NEED TO SET THE MQTT BROKERS FLAGS OFFLINE
+  resetMqttBrokerStates();
+  //connectWifi(); /* Disconnect if already connected and connect to the stored access point */
+  //lastConnectTry = millis(); /* set a timer */
   sprint(2, "Connecting to WiFi AP", cfgSettings.ap_ssid);
   WiFi.disconnect(); /* Disconnect first from current AP, if connected */
   WiFi.begin(cfgSettings.ap_ssid, cfgSettings.ap_pswd); /* connect to the ssid/pswd in ram */
   int connStatus = WiFi.waitForConnectResult();
   sprint(1, "connectWifi() Result", wifiStates[connStatus]);
- }
+  lastConnectTry = millis(); /* set a timer */
+ } 
+ 
+// void connectWifi() {
+//  sprint(2, "Connecting to WiFi AP", cfgSettings.ap_ssid);
+//  WiFi.disconnect(); /* Disconnect first from current AP, if connected */
+//  WiFi.begin(cfgSettings.ap_ssid, cfgSettings.ap_pswd); /* connect to the ssid/pswd in ram */
+//  int connStatus = WiFi.waitForConnectResult();
+//  sprint(1, "connectWifi() Result", wifiStates[connStatus]);
+// }

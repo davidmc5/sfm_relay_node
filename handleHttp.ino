@@ -4,9 +4,9 @@ void handleRoot() {
   if (captivePortal()) { // If captive portal redirect instead of displaying the page.
     return;
   }
-  server.sendHeader("Cache-Control", "no-cache, no-store, must-revalidate");
-  server.sendHeader("Pragma", "no-cache");
-  server.sendHeader("Expires", "-1");
+  httpServer.sendHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+  httpServer.sendHeader("Pragma", "no-cache");
+  httpServer.sendHeader("Expires", "-1");
 
   /* 
    * F(string_literal) is an arduino macro to store literal strings to flash instead of defaulting to ram
@@ -19,11 +19,11 @@ void handleRoot() {
  * Return true so the page handler does not try to handle the request again. 
  */
 boolean captivePortal() {
-  if (!isIp(server.hostHeader()) && server.hostHeader() != (String(myHostname) + ".local")) {
+  if (!isIp(httpServer.hostHeader()) && httpServer.hostHeader() != (String(myHostname) + ".local")) {
     sprint(2, "Request redirected to captive portal",);
-    server.sendHeader("Location", String("http://") + toStringIp(server.client().localIP()), true);
-    server.send(302, "text/plain", "");   // Empty content inhibits Content-length header so we have to close the socket ourselves.
-    server.client().stop(); // Stop is needed because we sent no content length
+    httpServer.sendHeader("Location", String("http://") + toStringIp(httpServer.client().localIP()), true);
+    httpServer.send(302, "text/plain", "");   // Empty content inhibits Content-length header so we have to close the socket ourselves.
+    httpServer.client().stop(); // Stop is needed because we sent no content length
     return true;
   }
   return false;
@@ -35,9 +35,9 @@ boolean captivePortal() {
 
 /** Wifi config page handler */
 void handleWifi() {
-  server.sendHeader("Cache-Control", "no-cache, no-store, must-revalidate");
-  server.sendHeader("Pragma", "no-cache");
-  server.sendHeader("Expires", "-1");
+  httpServer.sendHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+  httpServer.sendHeader("Pragma", "no-cache");
+  httpServer.sendHeader("Expires", "-1");
 
   String Page;
 
@@ -174,8 +174,8 @@ void handleWifi() {
 ////"<p>You may want to <a href='/'>return to the home page</a>.</p>"
 
   /* Send the page to browser */
-  server.send(200, "text/html", Page);
-  server.client().stop(); // Stop is needed because we sent no content length
+  httpServer.send(200, "text/html", Page);
+  httpServer.client().stop(); // Stop is needed because we sent no content length
 }
 
 /*
@@ -188,16 +188,16 @@ void handleWifiSave() {
   sprint(2, "WiFi Save", cfgSettings.ap_ssid);
   /* save the given ssid to ram struct field */
   /* argument name='n' from html"<input type='text' placeholder='ssid' name='n' id='ssid' />" */
-  server.arg("n").toCharArray(cfgSettings.ap_ssid, sizeof(cfgSettings.ap_ssid) - 1);
+  httpServer.arg("n").toCharArray(cfgSettings.ap_ssid, sizeof(cfgSettings.ap_ssid) - 1);
   /* save the given wifi password to ram struct field */
   /* argument name='p' from html "<input type='password' placeholder='password' name='p' id='pswd' />" */
-  server.arg("p").toCharArray(cfgSettings.ap_pswd, sizeof(cfgSettings.ap_pswd) - 1);
-  server.sendHeader("Location", "wifi", true);
-  server.sendHeader("Cache-Control", "no-cache, no-store, must-revalidate");
-  server.sendHeader("Pragma", "no-cache");
-  server.sendHeader("Expires", "-1");
-  server.send(302, "text/plain", "");    // Empty content inhibits Content-length header so we have to close the socket ourselves.
-  server.client().stop(); // Stop is needed because we sent no content length
+  httpServer.arg("p").toCharArray(cfgSettings.ap_pswd, sizeof(cfgSettings.ap_pswd) - 1);
+  httpServer.sendHeader("Location", "wifi", true);
+  httpServer.sendHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+  httpServer.sendHeader("Pragma", "no-cache");
+  httpServer.sendHeader("Expires", "-1");
+  httpServer.send(302, "text/plain", "");    // Empty content inhibits Content-length header so we have to close the socket ourselves.
+  httpServer.client().stop(); // Stop is needed because we sent no content length
   connect = strlen(cfgSettings.ap_ssid) > 0; // Request WLAN connect with new credentials if there is a SSID
 }
 
@@ -207,18 +207,18 @@ void handleNotFound() {
   }
   String message = F("File Not Found\n\n");
   message += F("URI: ");
-  message += server.uri();
+  message += httpServer.uri();
   message += F("\nMethod: ");
-  message += (server.method() == HTTP_GET) ? "GET" : "POST";
+  message += (httpServer.method() == HTTP_GET) ? "GET" : "POST";
   message += F("\nArguments: ");
-  message += server.args();
+  message += httpServer.args();
   message += F("\n");
 
-  for (uint8_t i = 0; i < server.args(); i++) {
-    message += String(F(" ")) + server.argName(i) + F(": ") + server.arg(i) + F("\n");
+  for (uint8_t i = 0; i < httpServer.args(); i++) {
+    message += String(F(" ")) + httpServer.argName(i) + F(": ") + httpServer.arg(i) + F("\n");
   }
-  server.sendHeader("Cache-Control", "no-cache, no-store, must-revalidate");
-  server.sendHeader("Pragma", "no-cache");
-  server.sendHeader("Expires", "-1");
-  server.send(404, "text/plain", message);
+  httpServer.sendHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+  httpServer.sendHeader("Pragma", "no-cache");
+  httpServer.sendHeader("Expires", "-1");
+  httpServer.send(404, "text/plain", message);
 }

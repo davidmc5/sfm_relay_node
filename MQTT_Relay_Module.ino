@@ -1,7 +1,7 @@
 
-#define FW_VERSION "1.33"
+#define FW_VERSION "1.34a"
 //Reduced delay on wifi module:   delay(200); // Without delay I've seen the IP address blank
-// refactoring mqtt and wifi
+// refactor http server and wifi
 // save settings only if mqtt succeeds to connect
 
 
@@ -173,7 +173,6 @@ char *debugLevel[] = {"ALERT", "DEBUG", "INFO"};
  */
 char *wifiStates[] = {"IDLE", "NO SSID", "2:?", "CONNECTED", "INCORRECT PASSWORD", "5:?", "DISCONNECTED"};
 unsigned int lastWifiState = WL_IDLE_STATUS; /* Set initial WiFi status to 'Not connected-Changing between status */
-//unsigned int wifiStatus = WL_IDLE_STATUS; /* Set initial WiFi status to 'Not connected-Changing between status */
 
 /* Node's info */
 char nodeId[18]; /* wifi MAC - this is the nodeId variable populated by the wifi module */
@@ -182,18 +181,19 @@ char wanIp[20]="0.0.0.0"; /* public IP of the node. Used by controller to determ
 
 
 
-// DNS server
-const byte DNS_PORT = 53;
-DNSServer dnsServer;
-
 /* Web Server */
-ESP8266WebServer server(80); /* Create a webserver object that listens for HTTP request on port 80 */
+//ESP8266WebServer server(80); /* Create a webserver object that listens for HTTP request on port 80 */
+ESP8266WebServer httpServer(80); /* Create a webserver object that listens for HTTP request on port 80 */
 void handleRoot();              // function prototypes for HTTP handlers
 void handleNotFound();
 
 /* Soft AP / captive portal network settings */
 IPAddress apIP(192, 168, 4, 1);
 IPAddress netMsk(255, 255, 255, 0);
+
+/* DNS server */
+const byte DNS_PORT = 53;
+DNSServer dnsServer;
 
 
 /** Connect to wifi WLAN? */
@@ -391,7 +391,7 @@ void loop() {
   /// RENAME server TO httpServer
   ////////////////////////////////
   //HTTP
-  server.handleClient();
+  httpServer.handleClient();
   MDNS.update();
 
   manageMqtt();
