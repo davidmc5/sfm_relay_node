@@ -48,7 +48,8 @@ void testSettings(){
   if (unsavedSettingsFound()){
     if(wifiConfigChanges){
       sprint(1, "WIFI Changes Made. Testing WiFi Connectivity...",);
-      connect = true; /* force wifi to reconnect using current settings on ram */ 
+//      connect = true; /* force wifi to reconnect using current settings on ram */ 
+      wifiUp = false; /* force wifi to reconnect using current settings on ram */ 
     }
     if (mqttConfigChanges){
       sprint(1, "MQTT Changes made. Testing mqtt Connectivity...",);
@@ -126,9 +127,8 @@ void loadMqttBrokerDefaults(){
   strcpy(cfgSettings.mqttUserB, mqttUser2);
   strcpy(cfgSettings.mqttPasswordB, mqttPassword2);
   sprint(0,"LOADED MQTT BROKER DEFAULTS",);
-
+  /* connect to given brokers */
   resetMqttBrokerStates();
-//  connect = true; /* force wifi to reconnect using current settings on ram */ 
 }
 
 
@@ -202,7 +202,8 @@ void manageMqtt(){
           if (mqttErrorCounter > 2){
             loadMqttBrokerDefaults();
             internetUp = false; /* assume internet is down */
-            connect = true; /* force reconnecting to wifi */                    
+//            connect = true; /* force reconnecting to wifi */                    
+            wifiUp = false; /* force reconnecting to wifi */                    
             mqttErrorCounter = 0; 
           }
           sprint(1, "MQTT ERROR COUNTER >>>>>>>>>>>>>", mqttErrorCounter);        

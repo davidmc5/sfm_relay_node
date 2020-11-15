@@ -173,6 +173,7 @@ char *debugLevel[] = {"ALERT", "DEBUG", "INFO"};
  */
 char *wifiStates[] = {"IDLE", "NO SSID", "2:?", "CONNECTED", "INCORRECT PASSWORD", "5:?", "DISCONNECTED"};
 unsigned int lastWifiState = WL_IDLE_STATUS; /* Set initial WiFi status to 'Not connected-Changing between status */
+unsigned int currentWifiState;
 
 /* Node's info */
 char nodeId[18]; /* wifi MAC - this is the nodeId variable populated by the wifi module */
@@ -197,7 +198,7 @@ DNSServer dnsServer;
 
 
 /** Connect to wifi WLAN? */
-boolean connect = true;
+//boolean connect = true;
 
 /** Last time connected to WLAN */
 unsigned long lastConnectTry = 0;
@@ -305,10 +306,15 @@ void setup() {
   ///////////////////////////////////////
   //// TODO >>>> if first time (OK not found), load default settings TO RAM 
   ////  and remove below
-  /* Clear wifi ssid/pswd invalid settings if first time (garbage in flash) */
+  /*
+   * If 'firstRun' is not 'OK' then revert to factory defaults for wifi settings and mqtt brokers
+   * Clear wifi ssid/pswd invalid settings if first time (garbage in flash)
+   */
   if ( strcmp(cfgSettings.firstRun, "OK") != 0){
-    strcpy(cfgSettings.ap_ssid, "<no ssid>");
-    strcpy(cfgSettings.ap_pswd, "<no password>");
+//    strcpy(cfgSettings.ap_ssid, "<no ssid>");
+//    strcpy(cfgSettings.ap_pswd, "<no password>");
+    strcpy(cfgSettings.ap_ssid, apSSIDfact);
+    strcpy(cfgSettings.ap_pswd, apPSWDfact);
   }
 
   /* Intitialize serial port to print console mesages if DEBUG mode is set */
@@ -320,7 +326,7 @@ void setup() {
   sprint(0,"BOOTING", ESP.getResetInfo());
   sprint(0,"FIRMWARE", FW_VERSION);
 
-  /* Do not store wifi settings in flash */  
+  /* Do not store wifi settings in flash - this is handled by handleHttp */  
   WiFi.persistent(false);
 
 /////////////////////////////////////

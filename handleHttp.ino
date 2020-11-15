@@ -178,19 +178,22 @@ void handleWifi() {
   httpServer.client().stop(); // Stop is needed because we sent no content length
 }
 
+
+//THIS FUCTION CAN ONLY BE CALLED IF WE ARE CONNECTED TO WIFI
 /*
  * handleWifiSave()
  * 
  * Handle the WLAN save form and redirect to WLAN config page again
  * https://techtutorialsx.com/2016/10/22/esp8266-webserver-getting-query-parameters/
+ * 
+ * This function stores in ram (only) the ssid/pswd entered in the captive portal 
+ * resets the wifiUp flag so the manageWifi fuction attempts to connect
  */
 void handleWifiSave() {
   sprint(2, "WiFi Save", cfgSettings.ap_ssid);
   /* save the given ssid to ram struct field */
-  /* argument name='n' from html"<input type='text' placeholder='ssid' name='n' id='ssid' />" */
   httpServer.arg("n").toCharArray(cfgSettings.ap_ssid, sizeof(cfgSettings.ap_ssid) - 1);
   /* save the given wifi password to ram struct field */
-  /* argument name='p' from html "<input type='password' placeholder='password' name='p' id='pswd' />" */
   httpServer.arg("p").toCharArray(cfgSettings.ap_pswd, sizeof(cfgSettings.ap_pswd) - 1);
   httpServer.sendHeader("Location", "wifi", true);
   httpServer.sendHeader("Cache-Control", "no-cache, no-store, must-revalidate");
@@ -198,7 +201,10 @@ void handleWifiSave() {
   httpServer.sendHeader("Expires", "-1");
   httpServer.send(302, "text/plain", "");    // Empty content inhibits Content-length header so we have to close the socket ourselves.
   httpServer.client().stop(); // Stop is needed because we sent no content length
-  connect = strlen(cfgSettings.ap_ssid) > 0; // Request WLAN connect with new credentials if there is a SSID
+  wifiUp = false; /* set the flag to connect to the given access point */
+  /* ram and flash settings are now different. Set the flags for unsaved changes */
+  wifiConfigChanges = true; /* request to save since wifi settings are valid */
+  unsavedChanges = true; /* this flag is reset by eeprom/saveAll() */
 }
 
 void handleNotFound() {

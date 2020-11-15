@@ -5,7 +5,6 @@
  * First set the value(s) in ram using mqtt/setSetting()
  */
 void saveAll(){
-  saveAllRequest = false; /* reset save all flag */
   if (unsavedChanges){
     sprint(1,"SAVING CONFIGURATION SETTINGS TO FLASH -- eeprom/saveAll()",);
     EEPROM.begin(512);
@@ -16,6 +15,7 @@ void saveAll(){
   }else{
     sprint(1, "saveAll() called but no changes to save to flash! Skipping",);
   }
+  saveAllRequest = false; /* reset save all flag */
 }
 
 

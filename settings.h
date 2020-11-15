@@ -33,11 +33,10 @@ struct cfgSettings_s{
   char mqttUserB[20];     /* offset= 170 */
   char mqttPasswordB[20]; /* offset= 190 */
 };
+
 /////////// CHANGE TO Settings_s, settingsRam and settingsFlash
 ///////////////////////////////////////////////////
 struct cfgSettings_s cfgSettings, cfgSettingsTemp; 
-//struct cfgSettings_s *settingsRamPtr, *settingsFlashPtr; //pointers to structures
-
 
 /* set pointers for both flash and ram structs */
 struct cfgSettings_s   * const settingsRamPtr = &cfgSettings; // set the struct pointer to the address of the Ram struct
