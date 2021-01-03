@@ -23,7 +23,6 @@
       Serial.print(debugLevel[level]); \
       Serial.print(" --> ");  \
       Serial.print(item);  \
-      Serial.print(": "); \
       Serial.println(value); \
     }
 #else

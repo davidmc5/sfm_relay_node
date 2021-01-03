@@ -19,8 +19,8 @@
 
 struct cfgSettings_s{  
   char firstRun[3];       /* offset= 0 - Flag to detect very first boot of a new device: unitialized flash memory has garbage */
-  char ap_ssid[20];       /* offset= 3 */
-  char ap_pswd[20];       /* offset= 23 */
+  char apSSIDa[20];       /* offset= 3 */
+  char apPSWDa[20];       /* offset= 23 */
   char site_id[10];       /* offset= 43 - Populated by initial setup or HELLO handshake */
   char debug[5];          /* offset= 53 - s=serial, m=mqtt: example s0m2 = send 'alerts' to serial and 'all' to mqtt */
   char node_type[20];     /* offset= 58 - node type:  r-16;s-16 */
@@ -42,7 +42,7 @@ struct cfgSettings_s cfgSettings, cfgSettingsTemp;
 struct cfgSettings_s   * const settingsRamPtr = &cfgSettings; // set the struct pointer to the address of the Ram struct
 struct cfgSettings_s   * const settingsFlashPtr = &cfgSettingsTemp; // set the struct pointer to the address of the FLASH struct
 char *structRamBase = (char *)settingsRamPtr; //cast the base ram as a pointer to char 
-char *structFlashBase = (char *)settingsFlashPtr; ////cast the base flash as a pointer to char
+char *structFlashBase = (char *)settingsFlashPtr; //cast the base flash as a pointer to char
 
 
 
@@ -68,8 +68,8 @@ struct Field_s{
  */
 struct Field_s field[] = {
   {"firstRun", 0, 3},
-  {"ap_ssid", 3, 20},
-  {"ap_pswd", 23, 20},
+  {"apSSIDa", 3, 20},
+  {"apPSWDa", 23, 20},
   {"site_id", 43, 10},
   {"debug", 53, 5},
   {"node_type", 58, 20},
@@ -83,11 +83,32 @@ struct Field_s field[] = {
   {"mqttPasswordB", 190, 20}
 };
 
+////////////////////////////////////
+// storage for the last 4 good wifi APs 
+struct wifiAP_s{
+  char apSsid[20];
+  char apPswd[20];
+};
+const int maxWifiAps = 4; /* maximum number of previous good wifi APs to store */
+struct wifiAP_s wifiAPs[maxWifiAps]{0}; /* LIFO stack for the most recent valid APs - Intialize all to null*/
+int lastWifiAp = 0; /* Store index to the current valid wifi AP */
+
+///////////////////////////////////
+
+
+
 const int numberOfFields = NUM_ELEMS(field);
-bool unsavedChanges = false; /* flag to signal when ram and flash settings are different - Reset by saveAll() */
-//bool changesFound = false; /* flag to signal when ram and flash settings are different - Set by unsavedSettingsFound() - Reset by eeprom/saveAll()*/
-bool wifiConfigChanges = false; /* flag to signal a save request if wifi settings are different between ram and flash */
-bool mqttConfigChanges = false; /* flag to signal a save request if mqtt settings are different between ram and flash */
+/*
+ * unsavedChanges
+ * 
+ * If true, ram and flash settings are different
+ * Set by http/handleWifiSave and mqtt/unsavedSettingsFound()
+ * Reset by eeprom saveAll() and getCfgSettings() 
+ */
+bool unsavedChanges = false; /* If true, ram and flash settings are different - Set by http/handleWifiSave and mqtt/unsavedSettingsFound(). Reset by eeprom saveAll() and getCfgSettings() */
+
+bool wifiConfigChanges = false; /* save request if wifi settings are different between ram and flash - set by mqtt/unsavedSettingsFound() and http/handleWifiSave() */
+bool mqttConfigChanges = false; /* save request if mqtt settings are different between ram and flash */
 bool saveAllRequest = false; /* flag to indicate a save request has been made */
 bool wifiUp = false;
 bool internetUp = false;

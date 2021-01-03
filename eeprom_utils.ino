@@ -1,12 +1,48 @@
 /*
  * saveAll()
  * 
- * Saves all the current settings in RAM to FLASH
+ * Saves all the current RAM settings to FLASH
  * First set the value(s) in ram using mqtt/setSetting()
  */
 void saveAll(){
   if (unsavedChanges){
+/////////////////////////////////////////////////////////////////////////
+// WIFI AP SETTINGS
+////////////////////
+    if (wifiConfigChanges){
+      /* store the current wifi AP on the LIFO stack if not already there */
+      bool found = false;
+      for(int ap = 0; ap < maxWifiAps; ap++){
+        /* find if AP is already stored */
+        if ( 
+          strcmp(wifiAPs[ap].apSsid, cfgSettings.apSSIDa) == 0 &&
+          strcmp(wifiAPs[ap].apPswd, cfgSettings.apPSWDa) == 0)
+          {
+            //lastWifiAp = ap;
+            found = true;
+            sprint(2,"WIFI AP FOUND ON LIFO INDEX: ", ap);
+            break;  
+        }    
+      }
+      if (!found){
+        /* push current AP to stack */
+        lastWifiAp++;
+        if (lastWifiAp >= maxWifiAps){
+          lastWifiAp = 0;
+        }
+        strcpy(wifiAPs[lastWifiAp].apSsid, cfgSettings.apSSIDa);
+        strcpy(wifiAPs[lastWifiAp].apPswd, cfgSettings.apPSWDa);
+      }      
+    }
+    // TO TEST WIFI AP LIFO
+    sprint(2, "LIFO APs - Last: ",lastWifiAp);
+    for(int ap = 0; ap < maxWifiAps; ap++){
+      sprint(2, wifiAPs[ap].apSsid, wifiAPs[ap].apPswd);
+    }
+//////////////////////////////////////////////////////////////////////////
+    
     sprint(1,"SAVING CONFIGURATION SETTINGS TO FLASH -- eeprom/saveAll()",);
+    strcpy(cfgSettings.firstRun, "OK"); /* Flag to indicate valid flash data for wifi and mqtt */
     EEPROM.begin(512);
     EEPROM.put(cfgStartAddr, cfgSettings);
     delay(200);
@@ -15,17 +51,25 @@ void saveAll(){
   }else{
     sprint(1, "saveAll() called but no changes to save to flash! Skipping",);
   }
-  saveAllRequest = false; /* reset save all flag */
+  /* no pending save requests. ALL RAM settings now match FLASH */
+  saveAllRequest = false; 
+  wifiConfigChanges = false;
+  mqttConfigChanges = false;  
 }
 
 
 
 /* 
  *  getCfgSettings()
+ *  
  *  Retrieves ALL config settings on eeprom into the given struct in ram
- *  Resets the unsavedChanges flag
+ *  Resets the unsavedChanges flag since now flash and ram settings are the same
  */
 void getCfgSettings(struct cfgSettings_s *structSettings){
+  if ( strcmp(cfgSettings.firstRun, "OK") != 0){
+    sprint(1,"FLASH DATA INVALID - CFG SETTINGS NOT RESTORED",);
+    return;
+  }
   EEPROM.begin(512);
   EEPROM.get(cfgStartAddr, *structSettings);
   EEPROM.end();
@@ -67,7 +111,7 @@ int stringCopy(char* dest, char* source, int dest_size){
     if (dest_size >= c+1){ /* Enough room to save source string */
       strncat(dest, source, dest_size);
     }else{
-      sprint(0, "EXCEEDS DESTINATION SIZE", source);
+      sprint(0, "EXCEEDS DESTINATION SIZE: ", source);
       ret = 1; /* return truncation flag */
     }
   }
@@ -108,8 +152,8 @@ int stringCopy(char* dest, char* source, int dest_size){
 //    }
 //    comp = strcmp(structFlashBase+field[i].offset, structRamBase+field[i].offset);
 //    if (comp != 0){ /*whats on RAM is different than what's on flash */
-//      sprint(1, "FIELD", field[i].name);
-//      sprint(1, "VALUE IN RAM", structRamBase+field[i].offset);
+//      sprint(1, "FIELD: ", field[i].name);
+//      sprint(1, "VALUE IN RAM: ", structRamBase+field[i].offset);
 //      sprint(1, "VALUE IN FLASH", structFlashBase+field[i].offset);      
 //      updateFlashField(structRamBase+field[i].offset, cfgStartAddr+field[i].offset, field[i].size);
 //    }
@@ -166,7 +210,7 @@ int checkConfigSettings(char* sourceStr, int fieldSize){
      c++;
    if (c >= fieldSize){
      /* send an alert */ 
-      sprint(0, "CONFIGURATION SETTINGS INCORRECT", sourceStr);
+      sprint(0, "CONFIGURATION SETTINGS INCORRECT: ", sourceStr);
       sprint(1, "Next field could be invalid too", );
       ret = 1; /* return error flag */
    }

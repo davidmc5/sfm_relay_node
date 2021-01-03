@@ -1,50 +1,28 @@
 
-/** Handle root or redirect to captive portal */
-void handleRoot() {
-  if (captivePortal()) { // If captive portal redirect instead of displaying the page.
-    return;
-  }
-  httpServer.sendHeader("Cache-Control", "no-cache, no-store, must-revalidate");
-  httpServer.sendHeader("Pragma", "no-cache");
-  httpServer.sendHeader("Expires", "-1");
-
-  /* 
-   * F(string_literal) is an arduino macro to store literal strings to flash instead of defaulting to ram
-   * https://stackoverflow.com/a/39658069
-   */   
-}
+/*
+ * Documentation: 
+ * https://arduino-esp8266.readthedocs.io/en/latest/esp8266wifi/server-examples.html
+ * https://lastminuteengineers.com/creating-esp8266-web-server-arduino-ide/
+ * https://techtutorialsx.com/2016/10/22/esp8266-webserver-getting-query-parameters/
+ * 
+ * F(string_literal) is an arduino macro to store literal strings to flash instead of defaulting to ram
+ * https://stackoverflow.com/a/39658069
+ */
 
 /*
- * Redirect to captive portal if we got a request for another domain. 
- * Return true so the page handler does not try to handle the request again. 
+ * configPage()
+ * 
+ * Returns the html page to configure the client wifi
  */
-boolean captivePortal() {
-  if (!isIp(httpServer.hostHeader()) && httpServer.hostHeader() != (String(myHostname) + ".local")) {
-    sprint(2, "Request redirected to captive portal",);
-    httpServer.sendHeader("Location", String("http://") + toStringIp(httpServer.client().localIP()), true);
-    httpServer.send(302, "text/plain", "");   // Empty content inhibits Content-length header so we have to close the socket ourselves.
-    httpServer.client().stop(); // Stop is needed because we sent no content length
-    return true;
-  }
-  return false;
-}
 
-//////////////////////////////////////////////
-//////////////////////////////////////////////
-//////////////////////////////////////////////
-
-/** Wifi config page handler */
-void handleWifi() {
-  httpServer.sendHeader("Cache-Control", "no-cache, no-store, must-revalidate");
-  httpServer.sendHeader("Pragma", "no-cache");
-  httpServer.sendHeader("Expires", "-1");
-
-  String Page;
+String configPage(){
+    String Page;
 
   /* CSS Style */
   Page += F(
             "<html>"
-              "<head><style>"
+              "<head>"
+              "<style>"
                 "body{color: black;}"
                 "p{text-align: center; font-size: 70px;}"
                 "div{font-size: 70px; padding: 20px 20px 20px 40px;}"
@@ -88,7 +66,6 @@ void handleWifi() {
       "<tr><td>LAN: "
     )+
     toStringIp(WiFi.localIP()) +
-    
     F(
       "</td></tr>"
       "<tr><td>WAN: "
@@ -101,7 +78,6 @@ void handleWifi() {
       "\r\n<br />"
     );
 
-
  /* Get ssid and password from user */
   Page += F(
             "<div>"
@@ -112,19 +88,15 @@ void handleWifi() {
             "</div>"
            );
 
-
-
-
-  sprint(2, "WiFi Scan",);
   ////////////////////////////////////////
   ///ADD HIPERLINKS TO EACH NETWORK 
   ////////////////////////////////////////
  
-  int n = WiFi.scanNetworks();
+  // REPLACE VARIABLE n WITH wifiScannedIps
+  int n = wifiScannedIps;
+  
   //asynchronous mode //
   //https://arduino-esp8266.readthedocs.io/en/latest/esp8266wifi/scan-examples.html
-  //int n = WiFi.scanNetworks(true);
-
   ///////////////////////////
 
   Page +=
@@ -135,9 +107,7 @@ void handleWifi() {
       )
     );
     
-
-
-  //////////////////////////
+  ////////////////////////// TESTING ADDING HIPERLINK
   /// Page += String(F("\r\n<tr><td>")) + WiFi.SSID(i) + F("  (") + WiFi.RSSI(i) + F(")</td></tr>");
   /// Page += String(F("\r\n<tr><td><a href='#pswd' onclick='on_click()'>")) + WiFi.SSID(i) + F("  (") + WiFi.RSSI(i) + F(")</a></td></tr>");
   
@@ -164,67 +134,95 @@ void handleWifi() {
   Page +=
   String(
     F(
-      "</table>"
-      "\r\n<br />"
+      "</table></html>"
+      "\r\n"
     )
   );
 
 /// "function on_click(clicked_ssid){document.getElementById('ssid').value = clicked_ssid}</script>"
 /// "function on_click(){document.getElementById('ssid').value='pepe'}</script>"
-////"<p>You may want to <a href='/'>return to the home page</a>.</p>"
-
-  /* Send the page to browser */
-  httpServer.send(200, "text/html", Page);
-  httpServer.client().stop(); // Stop is needed because we sent no content length
+return Page;
 }
 
 
-//THIS FUCTION CAN ONLY BE CALLED IF WE ARE CONNECTED TO WIFI
+
+/** Wifi config page handler */
+void handleWifi() {
+  sprint(2, "SENDING CONFIGURATION PAGE TO CLIENT AT: ", httpServer.client().remoteIP());
+
+  //httpServer.sendHeader("Location", "/", true); ///////FOR TESTING
+  
+  httpServer.sendHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+  httpServer.sendHeader("Pragma", "no-cache");
+  httpServer.sendHeader("Expires", "-1");
+  String Page = configPage();
+  
+//  httpServer.send(302, "text/html", Page);
+  httpServer.send(200, "text/html", Page);
+  
+  httpServer.client().stop();   
+  return;
+}
+
+
 /*
  * handleWifiSave()
  * 
- * Handle the WLAN save form and redirect to WLAN config page again
+ * Handle the WLAN save htlm form and redirects to WLAN config page again
  * https://techtutorialsx.com/2016/10/22/esp8266-webserver-getting-query-parameters/
  * 
- * This function stores in ram (only) the ssid/pswd entered in the captive portal 
- * resets the wifiUp flag so the manageWifi fuction attempts to connect
+ * This function stores in ram (only) the ssid (argument = "n") and pswd (argument = "p") entered in the captive portal 
+ * resets the wifiUp flag (to false) so the wifi/manageWifi fuction attempts to connect to verify credentials are valid
+ * 
  */
 void handleWifiSave() {
-  sprint(2, "WiFi Save", cfgSettings.ap_ssid);
-  /* save the given ssid to ram struct field */
-  httpServer.arg("n").toCharArray(cfgSettings.ap_ssid, sizeof(cfgSettings.ap_ssid) - 1);
-  /* save the given wifi password to ram struct field */
-  httpServer.arg("p").toCharArray(cfgSettings.ap_pswd, sizeof(cfgSettings.ap_pswd) - 1);
-  httpServer.sendHeader("Location", "wifi", true);
+    /* save the given ssid ("n") to ram struct field */
+  httpServer.arg("n").toCharArray(cfgSettings.apSSIDa, sizeof(cfgSettings.apSSIDa) - 1);
+  /* save the given wifi password ("p") to ram struct field */
+  httpServer.arg("p").toCharArray(cfgSettings.apPSWDa, sizeof(cfgSettings.apPSWDa) - 1);
+  sprint(2, "WIFI SAVE REQUEST: ", cfgSettings.apSSIDa);
+  sprint(2, "REQUESTING CLIENT: ", httpServer.client().remoteIP());
+  /*
+   * The Location response header indicates the URL to redirect a page to. 
+   * It is only meaningful when served with a 3xx (redirection) or 201 (created) status response.
+   * https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Location
+   */ 
+  httpServer.sendHeader("Location", "/configWait", true);
   httpServer.sendHeader("Cache-Control", "no-cache, no-store, must-revalidate");
   httpServer.sendHeader("Pragma", "no-cache");
   httpServer.sendHeader("Expires", "-1");
-  httpServer.send(302, "text/plain", "");    // Empty content inhibits Content-length header so we have to close the socket ourselves.
+  
+  httpServer.send(302, "text/html", "");    // Empty content inhibits Content-length header so we have to close the socket ourselves.
   httpServer.client().stop(); // Stop is needed because we sent no content length
   wifiUp = false; /* set the flag to connect to the given access point */
   /* ram and flash settings are now different. Set the flags for unsaved changes */
-  wifiConfigChanges = true; /* request to save since wifi settings are valid */
-  unsavedChanges = true; /* this flag is reset by eeprom/saveAll() */
+  unsavedChanges = true; /* Flash and ram settings are now different. This flag is reset by eeprom/saveAll() once settings are verified */
+  wifiConfigChanges = true; /* save settings request if wifi settings are verified to be valid */
+  retryWifiFlag = true; //test new AP settings right away
 }
 
-void handleNotFound() {
-  if (captivePortal()) { // If caprive portal redirect instead of displaying the error page.
-    return;
-  }
-  String message = F("File Not Found\n\n");
-  message += F("URI: ");
-  message += httpServer.uri();
-  message += F("\nMethod: ");
-  message += (httpServer.method() == HTTP_GET) ? "GET" : "POST";
-  message += F("\nArguments: ");
-  message += httpServer.args();
-  message += F("\n");
 
-  for (uint8_t i = 0; i < httpServer.args(); i++) {
-    message += String(F(" ")) + httpServer.argName(i) + F(": ") + httpServer.arg(i) + F("\n");
-  }
-  httpServer.sendHeader("Cache-Control", "no-cache, no-store, must-revalidate");
-  httpServer.sendHeader("Pragma", "no-cache");
-  httpServer.sendHeader("Expires", "-1");
-  httpServer.send(404, "text/plain", message);
+void handleConfigWait(){
+  String page = updatePage();
+  httpServer.sendHeader("Location", "/", true);
+  httpServer.send(200, "text/html", page);  
+  httpServer.client().stop(); // Stop is needed because we sent no content length
+}
+
+String updatePage(){
+    String Page;
+  /* CSS Style */
+  Page = F(
+            "<html>"
+              "<head>"
+                "<meta http-equiv='refresh' content='5 url= /'/>"
+              "<style>"
+                "body{color: black;}"
+                "h1{font-size: 100px; padding: 20px 20px 20px 40px;}"
+              "</style></head>"
+            "<body>"
+              "<h1>Updating Settings...</h1>"    
+            "</body>"       
+            );
+  return Page;
 }

@@ -12,7 +12,7 @@ void i2cInit(uint16_t* relayState) {
   for (byte i = 8; i < 120; i++){
     Wire.beginTransmission(i);
     if (Wire.endTransmission() == 0){
-      sprint(2, "Found I2C Device (decimal)", i);
+      sprint(2, "Found I2C Device (decimal): ", i);
       count++;
       delay(1);
     }
@@ -58,12 +58,12 @@ void setBit(uint16_t* relays, char* outBit, int val){
   outBit_int--;  
 
   //for testing
-//  sprint(2,"Register Bit", outBit_int );
-//  sprint(2,"VAL", val);
+//  sprint(2,"Register Bit: ", outBit_int );
+//  sprint(2,"VAL: ", val);
 
   if(val == 1){ 
     //set output to 0 (=ON -- open colector drivers)
-    //sprint(2,"outBit", outBit_int );
+    //sprint(2,"outBit: ", outBit_int );
   
     //https://stackoverflow.com/a/14467260
     //https://stackoverflow.com/a/7021750

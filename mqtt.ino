@@ -9,24 +9,22 @@
 //ESP.getFlashChipSize() returns the flash chip size, in bytes, as seen by the SDK (may be less than actual size).
 /*
  * ESP.random() 
- * should be used to generate true random numbers on the ESP. 
- * Returns an unsigned 32-bit integer with the random number. 
- * An alternate version is also available that fills an array of arbitrary length. 
- * Note that it seems as though the WiFi needs to be enabled to generate entropy for the random numbers, otherwise pseudo-random numbers are used.
+   * should be used to generate true random numbers on the ESP. 
+   * Returns an unsigned 32-bit integer with the random number. 
+   * An alternate version is also available that fills an array of arbitrary length. 
+   * Note that it seems as though the WiFi needs to be enabled to generate entropy for the random numbers, otherwise pseudo-random numbers are used.
  *
  * ESP.checkFlashCRC() 
- * calculates the CRC of the program memory (not including any filesystems) 
- * and compares it to the one embedded in the image. 
- * If this call returns false then the flash has been corrupted. 
+   * calculates the CRC of the program memory (not including any filesystems) 
+   * and compares it to the one embedded in the image. 
+   * If this call returns false then the flash has been corrupted. 
  * 
- * FUTURE: if unable to connect to neither pri AND bak after a few retries,
- * try the two standby brokers (hardcoded)
- * 
+ * FUTURE: 
+ *  if unable to connect to neither pri AND bak after a few retries, try the two standby brokers (hardcoded)
  */
 
 
 /*
- * *RENAME* testWifi() to:
  * testSettings()
  * 
  * Test, before saving to flash
@@ -42,7 +40,7 @@ void testSettings(){
   /* 
    *  Sets the corresponding test flags if WIFI or MQTT settings in ram are different from flash. 
    *  
-   *  This fucntion is called by
+   *  This function is called by
    */
   sprint (1, "VERIFYING A SAVE REQUEST",);
   if (unsavedSettingsFound()){
@@ -107,7 +105,8 @@ bool unsavedSettingsFound(){
  * and also by testSettings()
  */
 void resetMqttBrokerStates(){
-  mqttBrokerState = mqttBrokerUpA = mqttBrokerUpA = 0;
+  mqttBrokerState = mqttBrokerUpA = mqttBrokerUpB = 0;
+  wifiStatusChange = true; /////////// this could be removed if checked in main loop
 }
 
 /*
@@ -160,9 +159,19 @@ void loadMqttBrokerDefaults(){
 void manageMqtt(){
   /* check mqtt conection status only if connected to wifi */
   if (WiFi.status() == WL_CONNECTED && internetUp){
+    /* service mqtt requests */
     mqttClientA.loop();
     mqttClientB.loop();
-    /* if a saveAll request has been made, check first that neither wifi or mqtt changes are pending before saving */
+    /* 
+     *  if a saveAll request has been made, and there are no pending wifi or mqtt changes, then save settings.
+     *  Wifi and mqtt settings are critical for the node's connectivity. 
+     *  These seeetings need to be tested first before saving.
+     *  But if only non-critical settings are pending, saveAll can be called without testing (no risk of losing remote access to the node)
+     */   
+ ////////////////////////////////////////////////////
+ /// NEED TO DECOUPLE SAVING LOGIC FROM MQTT ROUTINES!!!
+ /////////////////////////////////////////////////////
+      
     if(saveAllRequest && unsavedChanges && !wifiConfigChanges && !mqttConfigChanges){
       sprint(1, "Saving non critical config changes...",);
       saveAll();
@@ -180,16 +189,16 @@ void manageMqtt(){
          sprint(1, "........................",);
           mqttErrorCounter = 0; 
           
-          // TEST IF BROKERS FLAG IS SET -> OK TO SAVE since we are connected to wifi
+          // IF BROKERS mqttConfigChanges FLAG IS SET -> OK TO SAVE since we are connected to wifi
           //////////////////////////////////////////////////////////////////////
-          //TEST HERE IS WE NEED TO TEST BROKERS' SETTINGS ON RAM (PRESUMABLY JUST CHANGED VIA MQTT)
-          //THIS IS AUTOMATIC IF WE HAVE CALLED THE resetMqttBrokerStates() FROM THE WIFI MODULE 
-          //TO SET THE BROKERS OFFLINE FLAGS RIGHT AFTER CONNECTING TO WIFI
+          //resetMqttBrokerStates() is called from the wifi module
+          //to set the brokers offline flags when re/connecting to wifi
           //
-          // THEN THE STATE MACHINE BELOW WILL LOOP/RETRY A COUPLE OF TIMES
-          // AND, INSTEAD OF SAVING, IT WILL RESTORE SETTINGS FROM FLASH UPON FAILURE
-          //BUT IF WE DO NOT TRIGGER THE ERROR LOOP AND CONNECT TO AT LEAST ONE MQTT THEN, GO AHEAD AND SAVE
-          //BUT GIVE A WARNING AND SEND A BROKER STATUS TOPIC IF NOT BOTH BROKERS ARE CONNECTED.
+          // THE STATE MACHINE BELOW WILL LOOP/RETRY A COUPLE OF TIMES
+          // AND, if unable to reconnect, INSTEAD OF SAVING, IT WILL RESTORE SETTINGS FROM FLASH
+          //
+          //IF WE DO NOT TRIGGER THE ERROR LOOP AND CONNECT TO AT LEAST ONE MQTT broker THEN SAVE all settings
+          //BUT GIVE A WARNING AND SEND A BROKER STATUS TOPIC IF NOT CONNECTED to both brokers
           //////////////////////////////////////////////////////////////////////////
           if (wifiConfigChanges || mqttConfigChanges){
             /* we are connected to both wifi and at least to one mqtt broker -> ok to save current settings */
@@ -202,11 +211,10 @@ void manageMqtt(){
           if (mqttErrorCounter > 2){
             loadMqttBrokerDefaults();
             internetUp = false; /* assume internet is down */
-//            connect = true; /* force reconnecting to wifi */                    
             wifiUp = false; /* force reconnecting to wifi */                    
             mqttErrorCounter = 0; 
           }
-          sprint(1, "MQTT ERROR COUNTER >>>>>>>>>>>>>", mqttErrorCounter);        
+          sprint(1, "MQTT ERROR COUNTER >>>>>>>>>>>>> ", mqttErrorCounter);        
         }        
         break;
 
@@ -238,14 +246,13 @@ void manageMqtt(){
         break;  
     }/* end of broker state machine */
   } 
-  else {
-    /* not yet connected to wifi --wait a bit */
-    delay(2000);
-  }
 } /* end of manageMqtt() */
 
 
 
+/////////////////////////////////
+/// DO WE NEED THIS?? IT IS JUST CONTROLLING THE LED!
+/////////////////////////////////
 
 /*
  * mqttNextState(state)
@@ -262,32 +269,24 @@ void manageMqtt(){
  * 3: Both brokers are offline. Monitor both brokers until at least one comes back online.
  */
 void mqttNextState(int state){
-  sprint(1, "STATE CHANGED FROM", mqttBrokerState);
-  sprint(1, "STATE CHANGED TO", state);
+  sprint(1, "STATE CHANGED FROM: ", mqttBrokerState);
+  sprint(1, "STATE CHANGED TO: ", state);
   mqttBrokerState = state;
   switch(state){
     
     case(0): /* Intial State - Both brokers assumed down - Check connectivity */
       /* Blink led until broker connectivity is aserted */
-      blinker.attach(0.5, changeState); //blink LED
+      ledBlink();
       break;
       
-    case(1): /* Normal State - Both mqtt brkers are online */
+    case(1): /* Normal State - Both mqtt brokers are online */
       /* LED on */
-      blinker.detach();
-      setLED(LED, LED_ON);
+      ledOn();
       break;
       
     case(2): /* Only one broker is offline */
-      /* LED on */
-      blinker.detach();
-      setLED(LED, LED_ON);
+      ledOn();
       break;
- 
-//    case(3): /* Both brokers are offline */
-//      /* full failure - blink LED */
-//      blinker.attach(0.5, changeState); //blink LED
-//      break;  
   }
 }
 
@@ -300,16 +299,15 @@ void mqttNextState(int state){
 
 
 
+void checkMqttBrokers(){
 /* 
  *  checkMqttBrokers() 
  *  
  *  checks if node is connected to each broker 
  *  and set status flags
  *  If node is not connected, attemp reconnect
- */
-void checkMqttBrokers(){  
-  /* Test Primary mqtt broker */  
-  if (!mqttClientA.connected()) {
+ */  
+  if (!mqttClientA.connected()) {   /* Test Primary mqtt broker */ 
     mqttBrokerUpA = 0; /* set broker as down */
     /*
      * Attempt to connect to Primary Broker A
@@ -319,7 +317,7 @@ void checkMqttBrokers(){
      * boolean connect (clientID, [username, password], [willTopic, willQoS, willRetain, willMessage], [cleanSession])
      * mqtt username and password are defined in the file mqtt_brokers.h
      */
-    sprint(1, "-------------> SETTING mqttPortA", cfgSettings.mqttPortA);
+    sprint(1, "-------------> SETTING mqttPortA: ", cfgSettings.mqttPortA);
     ///////////////////////////////////////////////////////////////////////
     mqttClientA.setServer(cfgSettings.mqttServerA, atoi(cfgSettings.mqttPortA));  //Primary mqtt broker
     mqttClientA.setCallback(mqttCallbackA); //function executed when a MQTT message is received.
@@ -329,7 +327,7 @@ void checkMqttBrokers(){
     strcat(mqttTopic, "/state/");
     if (mqttClientA.connect(mqttClientId, cfgSettings.mqttUserA, cfgSettings.mqttPasswordA, mqttTopic, 0, true, "0" )) { 
       mqttBrokerUpA = 1;  /* connected to primary broker */
-      sprint(1, "Connected to MQTT Broker A", cfgSettings.mqttServerA);
+      sprint(1, "Connected to MQTT Broker A: ", cfgSettings.mqttServerA);
       /* Subscribe to all topics (/#) prefixed by this nodeId */
       strcpy(mqttTopic, nodeId);
       strcat(mqttTopic, "/#");
@@ -337,11 +335,10 @@ void checkMqttBrokers(){
       sendState(); /* update the retained online status */   
    } 
    else {   
-      sprint(0, "Failure MQTT Broker A - State", mqttClientA.state());
+      sprint(0, "Failure MQTT Broker A - State: ", mqttClientA.state());
    }
   } /*end of Primary mqtt broker test */
-  /* Test Backup mqtt broker */
-  if (!mqttClientB.connected()) { 
+  if (!mqttClientB.connected()) {   /* Test Backup mqtt broker */
     mqttBrokerUpB = 0;       
     mqttClientB.setServer(cfgSettings.mqttServerB, atoi(cfgSettings.mqttPortB)); //Backup mqtt broker
     mqttClientB.setCallback(mqttCallbackB); //function executed when a MQTT message is received. 
@@ -351,7 +348,7 @@ void checkMqttBrokers(){
     strcat(mqttTopic, "/state/");    
     if (mqttClientB.connect(mqttClientId, cfgSettings.mqttUserB, cfgSettings.mqttPasswordB, mqttTopic, 0, true, "0" )) { 
       mqttBrokerUpB = 1;  /* connected to backup broker */        
-      sprint(1, "Connected to MQTT Broker B", cfgSettings.mqttServerB);
+      sprint(1, "Connected to MQTT Broker B: ", cfgSettings.mqttServerB);
       /* subscribe all topics for this nodeId (nodeId/#) */
       strcpy(mqttTopic, nodeId);
       strcat(mqttTopic, "/#");
@@ -359,9 +356,14 @@ void checkMqttBrokers(){
       sendState(); /* update the retained online status */  
     }
     else {   
-      sprint(0, "Failure MQTT Broker B - State", mqttClientB.state());
+      sprint(0, "Failure MQTT Broker B - State: ", mqttClientB.state());
     }        
   } /* end of backup broker test */
+  ///////////////////////////
+  if(!mqttBrokerUpA && !mqttBrokerUpB){
+    internetUp = false; /* Both brokers down: assume internet failure */
+  }
+  ///////////////////////////
 } /* end mqtt brokers check */
 
 
@@ -397,7 +399,7 @@ void mqttCallback(char* broker, char* topic, byte* payload, unsigned int length)
     mqttPayload[i] = (char)payload[i];
   }
   mqttPayload[length]= NULL; /* add null termination for string */
-  sprint(2, "MQTT BROKER", broker);  
+  sprint(2, "MQTT BROKER: ", broker);  
   sprint(2, topic, mqttPayload);  
   /* 
    *  Parse received mqtt topic into an array of pointers
@@ -468,11 +470,11 @@ void mqttCallback(char* broker, char* topic, byte* payload, unsigned int length)
   else if (strcmp(topics[1], "fwupdate") == 0){
     /* msg is the mqtt payload received and must include the webserver address, port and fw filename */
     /* Example payload: http://10.0.0.200:8000/fw_rev_2.bin */
-    sprint(2, "REQUESTED FIRMWARE UPGRADE", mqttPayload);
+    sprint(2, "REQUESTED FIRMWARE UPGRADE: ", mqttPayload);
     t_httpUpdate_return ret = ESPhttpUpdate.update(mqttPayload);
     switch(ret) {
       case HTTP_UPDATE_FAILED:
-        sprint(0, "HTTP_UPDATE_FAILED Error", ESPhttpUpdate.getLastErrorString().c_str());
+        sprint(0, "HTTP_UPDATE_FAILED Error: ", ESPhttpUpdate.getLastErrorString().c_str());
         break;
       }
   }
@@ -484,9 +486,9 @@ void mqttCallback(char* broker, char* topic, byte* payload, unsigned int length)
    *  If payload is set to "1", try to reconnect to the failed broker 
    */
    else if (strcmp(topics[1], "status") == 0){
-    sprint(2, "REQUESTED STATUS UPDATE", mqttPayload);
+    sprint(2, "REQUESTED STATUS UPDATE: ", mqttPayload);
     if ((mqttPayload[0]-'0') == 1){
-      sprint(2, "Resetting MQTT Connections", payload[0]-'0');
+      sprint(2, "Resetting MQTT Connections: ", payload[0]-'0');
       checkMqttBrokers();
     }
     sendStatus();
@@ -518,7 +520,7 @@ void mqttCallback(char* broker, char* topic, byte* payload, unsigned int length)
         }else{          
           /* publish just the requested setting. If there a payload, configure that value in ram */
           configSettings(topics[2], mqttPayload );
-          sprint(1,"topics[2]", strlen(topics[2]));
+          sprint(1,"topics[2]: ", strlen(topics[2]));
         }
       }else{
         /* Publish all configuration settings (null pointer = no setting given */ 
@@ -562,13 +564,13 @@ void mqttMsgCheck(char* topic, byte* payload, unsigned int payloadLength){
   int topic_length = strlen(topic);
   if (topic_length > mqttMaxTopicLength){
     //This is limited by the controller's settings: mqttTopicMaxLength
-    sprint(0, "topic length greater than topic_size", strlen(topic));
+    sprint(0, "topic length greater than topic_size: ", strlen(topic));
   }   
   /* verify payload length is within limit */
   if(payloadLength >= mqttMaxPayloadLength){
     //TODO: Alert mqtt broker that payload is being truncated!
     //This is limited by the controller's settings
-    sprint(0, "Payload exceeds max length of", mqttMaxPayloadLength);
+    sprint(0, "Payload exceeds max length of: ", mqttMaxPayloadLength);
   }
 }
 
@@ -639,11 +641,6 @@ void sendState(){
  *  mqtt brokers status flags
  */
 void sendStatus(){
-  ////////////////// NOT SURE WE NEED TO DO THIS HERE... WHAT IF WE ARE NOT CONNECTED?
-//  /* Since we have connectivity with a mqtt broker, turn LED on */
-//  blinker.detach();
-//  setLED(LED, LED_ON);
-  ///////////////////////////////////////////////
   /* Format message payload */  
   /* Add firmware version */
   strcpy(mqttPayload, FW_VERSION);          
@@ -747,7 +744,7 @@ void configSettings(char * setting, char * value){
     /* check if the setting is valid */
     fieldIndex = getFieldIndex(setting);
     if (fieldIndex == ERROR){
-      sprint(1, "Unknown Setting", setting);
+      sprint(1, "Unknown Setting: ", setting);
       publishError(setting);
       return; 
     }
@@ -840,10 +837,10 @@ void setSetting(int index, char* value){
   bool ret = 0;
   ret = stringCopy(structRamBase+field[index].offset, value, field[index].size);
   if (ret){
-    sprint(1, "INVALID VALUE FOR", field[index].name);
-    sprint(1, "Value", value);  
+    sprint(1, "INVALID VALUE FOR: ", field[index].name);
+    sprint(1, "Value: ", value);  
   }else{
-    sprint(1, "STORED VALUE", structRamBase+field[index].offset);  
+    sprint(1, "STORED VALUE: ", structRamBase+field[index].offset);  
   }
 }
 
@@ -861,7 +858,7 @@ int getFieldIndex(char * confSetting){
     /* check if value in flash is the same as value in active config in ram */
     if (strcmp(field[i].name, confSetting) == 0){
       found = 1;
-      sprint(1, "Setting Found", field[i].name);       
+      sprint(1, "Setting Found: ", field[i].name);       
       break;
     }
   }
