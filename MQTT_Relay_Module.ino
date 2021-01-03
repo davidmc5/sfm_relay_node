@@ -124,7 +124,6 @@ void publishError(char *setting="ERROR");
 
 char softAP_ssid[20];
 const char *softAP_password = APPSK;
-int softApClients; /* current number of softAP clients connected */
 
 /* levels for debug messages */
 char *debugLevel[] = {"ALERT", "DEBUG", "INFO"};
@@ -225,14 +224,13 @@ void setLED(int led, int action) {
  */
 
 /* flags set by the WIFI callback functions */
-bool wifiStationUp = false;
 bool wifiStatusChange = false;
+bool wifiStationUp = false;
 bool wifiStationGotIp = false;
-//////////
-//TEST
 bool wifiSoftApClientGotIp = false;
-//int prevWifiStationState;
-
+bool wifiSoftApClientConnected = false;
+bool wifiSoftApClientDisconnected = false;
+char clientMac[18] = {0};
 
 /* 
  *  TIMERS (Ticker)
@@ -285,7 +283,6 @@ void retryWifi(){
 WiFiEventHandler stationConnectedHandler;
 void onStationConnected(const WiFiEventStationModeConnected event){
   wifiStationUp = wifiStatusChange = true;
-//  sprint(1, "--------------> called onStationConnected",);
 }
 
 /* triggers when the device (in station mode) disconnects from the AP */
@@ -298,13 +295,10 @@ void onStationDisconnected(const WiFiEventStationModeDisconnected event){
   internetUp = false;
   strcpy(wanIp, "0.0.0.0"); /* Clear WAN IP */
   if (prevWifiStationState != WiFi.status()){
-//    sprint(1, "----------------> WIFI STATUS CHANGED!", WiFi.status());
-//    sprint(1, "----------------> prevWifiStationState: ", prevWifiStationState);
     resetMqttBrokerStates(); /* set brokers' status in failed mode - brokers are tested by mqtt/manageMqtt()*/
     prevWifiStationState = WiFi.status();
     wifiStatusChange = true;
   }
-//  sprint(1, "--------------> Called: onSstationDisconnected",);
 }
 
 /* triggers when the NODE/STATION gets an IP from the Access Point */
@@ -314,124 +308,54 @@ void onStationGotIp(const WiFiEventStationModeGotIP event){
   wifiUp = true;
   wifiStatusChange = true;
   retryWifiTimer.detach();
-//  sprint(1, "--------------> called: onStationGotIp",);
-
 }
 
-/*
- * Definitions used on below functions to copy a mac address (in array locations 0-5) to a string
- * #define   MACSTR   "%02x:%02x:%02x:%02x:%02x:%02x"
- * #define   MAC2STR(a)   (a)[0], (a)[1], (a)[2], (a)[3], (a)[4], (a)[5]
- */  
-  
 /* triggers when a device connects to the softAP. Event has MAC of the device */
 WiFiEventHandler softApClientConnected;
 void onSoftAPclientConnected(const WiFiEventSoftAPModeStationConnected event){
-  /* get MAC of just connected softAP client */
-  char mac[18] = {0};
-  snprintf(mac, sizeof(mac), MACSTR, MAC2STR(event.mac));
-  /////////////////////////////////
-  sprint(2, "EVENT: SOFTAP CLIENT CONNECTED. MAC: ", mac); //////////////// ---> SPRINT IS BLOCKING! set a flag WITH THE MAC instead!!! ///////////////////////
+  /* get MAC of client that just connected to softAP */
+  snprintf(clientMac, sizeof(clientMac), MACSTR, MAC2STR(event.mac));
+  wifiSoftApClientConnected = true;
+  wifiStatusChange = true;
 }
  
 /* triggers when a device disconnects from the softAP */
 WiFiEventHandler softApClientDisconnected;
 void onSoftAPclientDisconnected(const WiFiEventSoftAPModeStationDisconnected event){
-  /* get MAC of just disconnected softAP client */
-  char mac[18] = {0};
-  snprintf(mac, sizeof(mac), MACSTR, MAC2STR(event.mac));
-  //////////////////////////
-  sprint(2, "EVENT: SOFTAP CLIENT DISCONNECTED: ", mac);//////////////// ---> SPRINT IS BLOCKING! set a flag WITH THE MAC instead!!! ///////////////////////
+  /* get MAC of client that just disconnected from softAP */
+  snprintf(clientMac, sizeof(clientMac), MACSTR, MAC2STR(event.mac));
+  wifiSoftApClientDisconnected = true;
+  wifiStatusChange = true;
 }
-
-
-
-///////////////////////////////
-///DID NOT TEST THIS ONE..... this might be for the ESP32.. !!!
-////////////////////
-///TEST -- it probably wont work because there is no event for distributed IP defined on WiFiEventHandler
-//WiFiEventHandler softApClientIp;
-////https://github.com/esp8266/Arduino/blob/master/libraries/ESP8266WiFi/src/ESP8266WiFiGeneric.cpp
-//https://bbs.espressif.com/viewtopic.php?t=1927
-//
-// CAN WE USE THIS WITH:  WIFI_EVENT_SOFTAPMODE_DISTRIBUTE_STA_IP ????????????????????
-//
-//void onSoftApClientIp(System_Event_t *event) {
-//  switch (event->event) {
-//    case WIFI_EVENT_SOFTAPMODE_STACONNECTED:
-//    case WIFI_EVENT_SOFTAPMODE_STADISCONNECTED: {
-//      char mac[32] = {0};
-//      snprintf(mac, 32, MACSTR ", aid: %d" , MAC2STR(event->event_info.sta_connected.mac), event->event_info.sta_connected.aid);
-//      Serial.println(mac);
-//    }
-//    break;
-//  }
-//}
-//
-
-
-
-// THIS IS USED FOR TEST ONLY - CALLBACK REGISTRATION IS DISABLED IN SETUP()
-// https://github.com/esp8266/Arduino/blob/master/libraries/ESP8266WiFi/examples/WiFiEvents/WiFiEvents.ino
-WiFiEventHandler probeRequestPrintHandler;
-void onProbeRequestPrint(const WiFiEventSoftAPModeProbeRequestReceived& evt) {
-  Serial.print("Probe request from: ");
-  //Serial.print(macToString(evt.mac));
-  char macStr[18];
-  // Copies the sender mac address to a string
-  snprintf(macStr, sizeof(macStr), MACSTR, MAC2STR(evt.mac));
-  Serial.print(macStr);
-  Serial.print(" RSSI: ");
-  Serial.println(evt.rssi);
-}
-
 /*
- * 
- *  Set up mqtt client
- *  
- * include <PubSubClient.h>
- * Reference for multiple brokers:
- * https://github.com/knolleary/pubsubclient/issues/511
- *  Create a client that can connect to a specified internet IP address and port as defined in client.connect()
- *  see mqtt.ino module for mqttClient.connect()
- *  see setup()/ mqttClient.setServer()
- */
-WiFiClient espClientA; //Primary mqtt broker
-WiFiClient espClientB; //Backup mqtt broker
-PubSubClient mqttClientA(espClientA);
-PubSubClient mqttClientB(espClientB);
-
-
+ * Definitions to copy a mac address (in array locations 0-5) to a string
+ * #define   MACSTR   "%02x:%02x:%02x:%02x:%02x:%02x"
+ * #define   MAC2STR(a)   (a)[0], (a)[1], (a)[2], (a)[3], (a)[4], (a)[5]
+ */  
+  
 /* 
- *  callback for all wifi events
+ *  Callback for all wifi events
+   *  But only usedd for event:
+   *   WIFI_EVENT_SOFTAPMODE_DISTRIBUTE_STA_IP
  *  
- *  ///////////////// CHANGE THIS CALLBACK TO ELIMINATE THE SWITCH STATEMENT: 
- *  FROM WIFI_EVENT_ANY TO 
- *  WIFI_EVENT_SOFTAPMODE_DISTRIBUTE_STA_IP
- *  /////////////////////////////////////////////////////////
+ *  WiFi.onEvent is DEPRECATED!!!
+   *  But it is STILL INCLUDED IN THE LATEST ESP8266WiFiGeneric.cpp
+   *  https://github.com/esp8266/Arduino/blob/master/libraries/ESP8266WiFi/src/ESP8266WiFiGeneric.h#L63
+   *  https://github.com/godstale/ESP8266_Arduino_IDE_Example/blob/master/example/WiFiClientEvents/WiFiClientEvents.ino
  *  
- *  DEPRECATED - DEPRECATED - DEPRECATED - DEPRECATED - DEPRECATED - DEPRECATED - DEPRECATED
- *  https://github.com/esp8266/Arduino/blob/master/libraries/ESP8266WiFi/src/ESP8266WiFiGeneric.h#L63
- *  
- *  BUT WiFi.onEvent IS STILL INCLUDED IN THE LATEST ESP8266WiFiGeneric.cpp
  *  TRY ADDING THE 'DISTRIBUTE_STA_IP' EVENT IN THIS LIBRARY:
- *  https://github.com/esp8266/Arduino/blob/master/libraries/ESP8266WiFi/src/ESP8266WiFiGeneric.cpp#L94
- *  It seems that the new event WIFI_EVENT_SOFTAPMODE_DISTRIBUTE_STA_IP
- *  triggers when an IP is assigned to a softAP client (Need to confirm)
+   *  https://github.com/esp8266/Arduino/blob/master/libraries/ESP8266WiFi/src/ESP8266WiFiGeneric.cpp#L94
+   *  It seems that the new event WIFI_EVENT_SOFTAPMODE_DISTRIBUTE_STA_IP
+   *  triggers when an IP is assigned to a softAP client (Need to confirm)
  *  
- *  This call back is registered in setup() with the line:
- *  WiFi.onEvent(WiFiEvent, WIFI_EVENT_ANY);
- *  https://techtutorialsx.com/2019/08/11/esp32-arduino-getting-started-with-wifi-events/
- *  https://github.com/esp8266/Arduino/blob/master/libraries/ESP8266WiFi/src/ESP8266WiFiType.h
+ *  This callback is registered in setup() with the line:
+ *  WiFi.onEvent(softApDistributeIpEvent, WIFI_EVENT_SOFTAPMODE_DISTRIBUTE_STA_IP);
+   *  https://techtutorialsx.com/2019/08/11/esp32-arduino-getting-started-with-wifi-events/
+   *  https://github.com/esp8266/Arduino/blob/master/libraries/ESP8266WiFi/src/ESP8266WiFiType.h
  */
-void WiFiEvent(WiFiEvent_t event) {
-  switch (event){
-      case WIFI_EVENT_SOFTAPMODE_DISTRIBUTE_STA_IP:
-//        sprint(1, "-------------> EVENT: WIFI_EVENT_SOFTAPMODE_DISTRIBUTE_STA_IP",); //disable: sprint() is a blocking function! 
-        wifiSoftApClientGotIp = true;
-        wifiStatusChange = true;
-        break;
-  }
+void softApDistributeIpEvent(WiFiEvent_t event) {
+  wifiSoftApClientGotIp = true;
+  wifiStatusChange = true;
 }
 
 
@@ -472,6 +396,61 @@ void WiFiEvent(WiFiEvent_t event) {
 
 
 
+// FOR TEST ONLY - Enable CALLBACK REGISTRATION IN SETUP()
+// https://github.com/esp8266/Arduino/blob/master/libraries/ESP8266WiFi/examples/WiFiEvents/WiFiEvents.ino
+WiFiEventHandler probeRequestPrintHandler;
+void onProbeRequestPrint(const WiFiEventSoftAPModeProbeRequestReceived& evt) {
+  Serial.print("Probe request from: ");
+  //Serial.print(macToString(evt.mac));
+  char macStr[18];
+  // Copy the sender mac address to a string
+  snprintf(macStr, sizeof(macStr), MACSTR, MAC2STR(evt.mac));
+  Serial.print(macStr);
+  Serial.print(" RSSI: ");
+  Serial.println(evt.rssi);
+}
+
+
+///////////////////////////////
+///DID NOT TEST THIS ONE..... this might be for the ESP32.. !!!
+////////////////////
+///TEST -- it probably wont work because there is no event for distributed IP defined on WiFiEventHandler
+//WiFiEventHandler softApClientIp;
+////https://github.com/esp8266/Arduino/blob/master/libraries/ESP8266WiFi/src/ESP8266WiFiGeneric.cpp
+//https://bbs.espressif.com/viewtopic.php?t=1927
+//
+// CAN WE USE THIS WITH:  WIFI_EVENT_SOFTAPMODE_DISTRIBUTE_STA_IP ????????????????????
+//
+//void onSoftApClientIp(System_Event_t *event) {
+//  switch (event->event) {
+//    case WIFI_EVENT_SOFTAPMODE_STACONNECTED:
+//    case WIFI_EVENT_SOFTAPMODE_STADISCONNECTED: {
+//      char mac[32] = {0};
+//      snprintf(mac, 32, MACSTR ", aid: %d" , MAC2STR(event->event_info.sta_connected.mac), event->event_info.sta_connected.aid);
+//      Serial.println(mac);
+//    }
+//    break;
+//  }
+//}
+//
+
+
+/*
+ * 
+ *  Set up mqtt client
+ *  
+ * include <PubSubClient.h>
+ * Reference for multiple brokers:
+ * https://github.com/knolleary/pubsubclient/issues/511
+ *  Create a client that can connect to a specified internet IP address and port as defined in client.connect()
+ *  see mqtt.ino module for mqttClient.connect()
+ *  see setup()/ mqttClient.setServer()
+ */
+WiFiClient espClientA; //Primary mqtt broker
+WiFiClient espClientB; //Backup mqtt broker
+PubSubClient mqttClientA(espClientA);
+PubSubClient mqttClientB(espClientB);
+
 /*
  * showFreeHeapOnChange()
  * 
@@ -499,6 +478,16 @@ void monitorEvents(){
   if (wifiStatusChange){
     wifiStatusChange = false;
     sprint(2, "WIFI STATUS ---------------------", );
+
+    if(wifiSoftApClientConnected){
+      sprint(2, "EVENT: SOFTAP CLIENT CONNECTED. MAC: ", clientMac);
+      wifiSoftApClientConnected = false;
+    }
+    if(wifiSoftApClientDisconnected){
+      sprint(2, "EVENT: SOFTAP CLIENT DISCONNECTED. MAC: ", clientMac);
+      showSoftApClients();
+      wifiSoftApClientDisconnected = false;
+    }   
     if(wifiStationUp){
       sprint(2, "WIFI STATION CONNECTED",);
     }else{
@@ -516,7 +505,7 @@ void monitorEvents(){
     }
     if(mqttBrokerUpA || mqttBrokerUpB){ /* at least one broker is up */
       ledOn();
-      sprint(2, "MQTT UP: ", mqttBrokerUpA+mqttBrokerUpB);
+      sprint(2, "MQTT UP: ", mqttBrokerUpA + mqttBrokerUpB);
     }else{
       ledBlink();
       sprint(0, "MQTT DOWN",);
@@ -555,9 +544,7 @@ void setup() {
   sprint(0,"FIRMWARE: ", FW_VERSION);
 
   strcpy(cfgSettings.firstRun, "OK"); /* Assume flash data is OK on boot only to determine if they are valid */
-  getCfgSettings();  /* load configuration settings from flash to ram */
-  
-
+  getCfgSettings();  /* load configuration settings from flash to ram */  
   /*
    * If 'firstRun' is not 'OK' then revert to factory defaults for wifi settings and mqtt brokers
    * Clear wifi ssid/pswd invalid settings if first time (garbage in flash)
@@ -633,12 +620,15 @@ void setup() {
   softApClientDisconnected = WiFi.onSoftAPModeStationDisconnected(&onSoftAPclientDisconnected); /* a device disconnected from softAP */
 
   /*
+   * Register the callback function softApDistributeIpEvent for wifi event, WIFI_EVENT_SOFTAPMODE_DISTRIBUTE_STA_IP
+   * 
    *  APARENTLY THE WiFi.onEvent() FUNTION IS DEPRECATED!
    *  https://github.com/esp8266/Arduino/blob/master/libraries/ESP8266WiFi/src/ESP8266WiFiGeneric.h#L64
    */
-  WiFi.onEvent(WiFiEvent, WIFI_EVENT_ANY); /* register the callback function WiFiEvent() for all wifi events, WIFI_EVENT_ANY */
+  WiFi.onEvent(softApDistributeIpEvent, WIFI_EVENT_SOFTAPMODE_DISTRIBUTE_STA_IP); 
+
   
-  //dissable callback registration: too many probes from devices. Uncomment below for testing only!
+  ////dissable callback registration: too many probes from devices. Uncomment below for testing only!
   //probeRequestPrintHandler = WiFi.onSoftAPModeProbeRequestReceived(&onProbeRequestPrint);
 
 //////////////////////////
@@ -647,7 +637,7 @@ void setup() {
 
   ledBlink();
 
-  startSoftAP(); /* Start softAP and DNS server for client configuration */
+  startSoftAP(); /* Start softAP, DNS and HTTP servers for client configuration */
 
 
   /*
@@ -683,8 +673,8 @@ void loop() {
 //    WiFi.begin("invalid-ssid", "bad-password"); /* use this to test the led flashing - never connects*/
     /////////
     
-    retryWifiFlag = false; /* don't check again until after retry time */
-    if (!softApClients){
+    retryWifiFlag = false; /* don't check again until after new retry time */
+    if (WiFi.softAPgetStationNum() > 0){
       retryWifiTimer.attach(10, retryWifi); /* start retry timer - calls retryWifi() on timeout*/
     }else{ /* wait longer to retry APs when a client is connected to prioritize configuration tasks */
       retryWifiTimer.attach(60, retryWifi); /* start retry timer - calls retryWifi() on timeout*/
@@ -702,11 +692,16 @@ void loop() {
     resetMqttBrokerStates();
     checkInternet();
   }
+  
   if (internetUp){
     manageMqtt();
   }
+
+  if (wifiSoftApClientGotIp){
+    showSoftApClients(); /* display the clients connected to the softAP if an IP assignment event got triggered */
+    wifiSoftApClientGotIp = false; /* reset event flag */
+  }
   
-  showSoftApClients(); /* display -if change- the number of clients connected to the softAP for configuration */
   showFreeHeapOnChange(); /* monitor memory leaks */
     
 } /* END OF LOOP */

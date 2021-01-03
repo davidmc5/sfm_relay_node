@@ -11,15 +11,14 @@ void startSoftAP(){
    * See FAQ: https://bbs.espressif.com/viewtopic.php?f=10&t=324
    */  
   sprint(2, "Configuring Soft Access Point...", );
-  softApClients = 0; /* no clients connected to softAP yet */  
   /* 
    *  set SSID to "SFM_Module" + last 4 digits of wifi client's MAC address  
    * 
-   * convert const String (WiFi.macAddress)to const char* (nodeId)
-   * NOTE: For SN/ID purposes use only the station mac - WiFi.macAddress() - since it is registered to espressif. 
+   * Convert const String (WiFi.macAddress)to const char* (nodeId)
+   * NOTE: For SN identification purposes use only the station mac - WiFi.macAddress() - it is registered to espressif. 
    * The softAP mac - WiFi.softAPmacAddress() - is unregistered.
-   * // sprint(2, "----> STATION MAC: ", WiFi.macAddress().c_str()); ----> STATION MAC: F4:CF:A2:71:B0:33
-   * // sprint(2, "----> SOFTAP MAC: ", WiFi.softAPmacAddress().c_str()); ----> SOFTAP MAC: F6:CF:A2:71:B0:33
+   * // sprint(2, "----> STATION MAC: ", WiFi.macAddress().c_str()); ----> STATION MAC: F4:CF:A2:71:B0:33 (espressif)
+   * // sprint(2, "----> SOFTAP MAC: ", WiFi.softAPmacAddress().c_str()); ----> SOFTAP MAC: F6:CF:A2:71:B0:33 (not registered)
    */
   WiFi.macAddress().toCharArray(nodeId, WiFi.macAddress().length()+1);
   /* remove mac address character ":" from nodeId */
@@ -37,12 +36,12 @@ void startSoftAP(){
   WiFi.setAutoReconnect(false); /* prevents reconnecting to last AP if conection is lost */
   if (WiFi.softAP(softAP_ssid, softAP_password) ){
     sprint(1, "SOFTAP ENABLED. SSID: ", softAP_ssid);
+    sprint(2, "SoftAP IP Address: ", WiFi.softAPIP());
+    startDnsServer();
+    startHttpServer();
   }else{
     sprint(0, "SOFTAP INITIALIZATION FAILED!",);
   }
-  sprint(2, "SoftAP IP Address: ", WiFi.softAPIP());
-  startDnsServer();
-  startHttpServer();
  }
  
 void startDnsServer(){
@@ -77,52 +76,32 @@ void startHttpServer(){
   sprint(2, "HTTP server started",);
   softApTimer.attach(60, softAPoff); /* Disable softAP after 60 seconds */
   softAPoffFlag = false;
-  //wifiStatusChange = true;  
 }
 
 
-/*
- * showSoftApClients()
- * 
- * Show the current number of connected devices when a device connects or disconnects. 
- * softApClients is the last number of clients connected
- * Right after a client reports as connected to the softAP, it takes a few more seconds to get an IP assigned
- * We need to wait a bit before exchanging data or wait for the callback 
- * https://techtutorialsx.com/2019/08/11/esp32-arduino-getting-started-with-wifi-events/
- */
 void showSoftApClients(){
-  softApClients = WiFi.softAPgetStationNum();  /* used to delay the wifi retry time if a client is connected */
-  if (!wifiSoftApClientGotIp){ /* DO NOT RETRIEVE CONNECTED CLIENTS UNTIL THEY GOT AN IP */
-    return;    
-  }  
-  showSoftApClientsInfo();
-}
-
-
-/*
- * showSoftApClientsInfo()
- * 
- * DISPLAY CONNECTED DEVICES WITH MAC
- * 
- * https://www.esp8266.com/viewtopic.php?f=32&t=5669&start=4
- * https://learn.adafruit.com/mac-address-finder/the-code
- * https://www.espressif.com/sites/default/files/documentation/2c-esp8266_non_os_sdk_api_reference_en.pdf
- * 
- * station_num() reports faster than station_info()
- * station_info() depends on DHCP to complete IP assignment
- * Use event handler 
- * case WIFI_EVENT_SOFTAPMODE_STACONNECTED:
- * case WIFI_EVENT_SOFTAPMODE_STADISCONNECTED:
- * https://bbs.espressif.com/viewtopic.php?t=1927
- * https://github.com/esp8266/Arduino/issues/2100
- * 
- * Note: this is not an event, just static data. 
- * The MAC not accesible by this function right after a connect/disconnect event triggers
- * Need to wait for DHCP to assign an IP.
- * However, the MAC is available immediately with the events WiFi.onSoftAPModeStationConnected and Disconnected
- */
-void showSoftApClientsInfo(){
   /*
+   * Disply the devices connected with their MAC and assigned IP
+   * 
+   * Right after a client reports as connected (via an event), it takes a few more seconds to get an IP assigned
+   * Wait for the callback that sets up the flag wifiSoftApClientGotIp
+   * 
+     * https://techtutorialsx.com/2019/08/11/esp32-arduino-getting-started-with-wifi-events/
+     * https://www.esp8266.com/viewtopic.php?f=32&t=5669&start=4
+     * https://learn.adafruit.com/mac-address-finder/the-code
+     * https://www.espressif.com/sites/default/files/documentation/2c-esp8266_non_os_sdk_api_reference_en.pdf
+   * 
+   * WiFi.softAPgetStationNum() reports current number of clients connected
+   * wifi_softap_get_station_info() reports the MAC and IP of connected clients AFTER DHCP has assigned IPs
+   * So, the number of clients connected might be temporarily more than the clients reported with MAC/IPs.
+     * https://bbs.espressif.com/viewtopic.php?t=1927
+   * 
+   * The MAC not accesible by wifi_softap_get_station_info() right after a connect/disconnect onEvent triggers
+     * Need to wait for DHCP to assign an IP.
+     * https://github.com/esp8266/Arduino/issues/2100
+   * 
+   * However, the MAC is available immediately with the events WiFi.onSoftAPModeStationConnected/Disconnected
+   *
    * See SDK files for details of struct station_list and linked list control STAILQ_NEXT
    * 
    * https://github.com/mattcallow/esp8266-sdk/blob/master/esp_iot_sdk/include/user_interface.h
@@ -143,8 +122,7 @@ void showSoftApClientsInfo(){
    *   
    *   SDK function wifi_softap_get_station_num() is the same as WiFi.softAPgetStationNum()
    */
-  sprint(2, "-------------------------------------------------------",);
-  sprint(2, "CONNECTED SOFTAP CLIENTS: ", WiFi.softAPgetStationNum() );  
+  sprint(2, "CONNECTED SOFTAP CLIENTS: ", wifi_softap_get_station_num() );  
   struct station_info *station_list = wifi_softap_get_station_info();
   while (station_list != NULL) {
     /* get MAC */
@@ -153,16 +131,14 @@ void showSoftApClientsInfo(){
     /* get IP */
     String station_ip = " - " + IPAddress((&station_list->ip)->addr).toString();
     sprint(2, station_mac, station_ip);
-
-   
-//    Serial.print(station_mac); Serial.print(" "); Serial.println(station_ip); 
-    
     station_list = STAILQ_NEXT(station_list, next);
   }
   wifi_softap_free_station_info(); /* free memory */
-  wifiSoftApClientGotIp = false; /* reset event flag */
+//  wifiSoftApClientGotIp = false; /* reset event flag */
   Serial.println();
 }
+
+
 
  void connectWlan() {
   /*
@@ -176,7 +152,6 @@ void showSoftApClientsInfo(){
   prevWifiStationState = WL_IDLE_STATUS; /* reset current wifi state flag to force checking internet access by fetching the public IP*/  
   resetMqttBrokerStates(); /* Since we are re/connecting to wifi, set mqtt brokers status offline */ 
   sprint(2, "Connecting to WiFi AP: ", cfgSettings.apSSIDa);
-
   wifiUp = WiFi.status() == WL_CONNECTED; /* set wifi state flag */ 
   if(wifiUp){
     sprint(2, "WIFI IS UP NOW!",);
@@ -185,6 +160,9 @@ void showSoftApClientsInfo(){
 
 
  void loadWifiDefaults(){
+  /*
+   * reset wifi AP to factory default
+   */
   strcpy(cfgSettings.apSSIDa, apSSIDfact);
   strcpy(cfgSettings.apPSWDa, apPSWDfact);
   sprint(2,"LOADED WIFI AP DEFAULT",);
@@ -192,6 +170,9 @@ void showSoftApClientsInfo(){
 
 
  void checkInternet(){
+  /*
+   * 
+   */
   HTTPClient http;
   //////////////////////////////////////////////////////////
   /////// >>> MAKE THIS SERVICE SITE CONFIGURABLE VIA MQTT
@@ -207,10 +188,6 @@ void showSoftApClientsInfo(){
     sprintf(wanIp, "%s", http.getString().c_str());
     sprint(2,"Public IP: ", wanIp);
     internetUp = true;
-   
-    /////// MIGHT NEED TO CHECK ONLY WHEN IT CHANGES! 
-//    wifiStatusChange = true;
-//    sprint(1, "Setting wifiStatusChange = true on wifi.checkInternet()", );
    /* 
     * Set a unique client id to connect to mqtt broker (client prefix + node's mac)
     * This assignement needs to be done after succesful connection to wifi (WITH INTERNET TESTED!)
@@ -233,10 +210,11 @@ void showSoftApClientsInfo(){
     sprint(0, "WiFI is Up but no Internet",); 
     internetUp = false;
     resetMqttBrokerStates();
-//    wifiStatusChange = true;
   }
   http.end();   //Close connection
  }
+
+
 
 //NEEDS TO BE CHANGED: IT ONLY CONNECTS TO ONE AP
 //NEEDS TO CHECK MULTIPLE APs, WITH THE SAME or different SSID and/or passwords
@@ -246,18 +224,7 @@ void showSoftApClientsInfo(){
 
 
 
-/*
- * saveAP()
- * 
- * stores current wifi AP on RAM into LIFO stack.
- * 
- */
-void saveAP(){
-  ;
-}
-
 // Load values from flash into struct, or null for none
-
 //build functions to:
 //getPreviousAP() //retrieve wifi APs in LIFO order
 //saveAP() //store current wifi AP in LIFO order
