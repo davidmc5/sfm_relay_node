@@ -6,39 +6,39 @@
  */
 void saveAll(){
   if (unsavedChanges){
-/////////////////////////////////////////////////////////////////////////
-// WIFI AP SETTINGS
-////////////////////
-    if (wifiConfigChanges){
-      /* store the current wifi AP on the LIFO stack if not already there */
-      bool found = false;
-      for(int ap = 0; ap < maxWifiAps; ap++){
-        /* find if AP is already stored */
-        if ( 
-          strcmp(wifiAPs[ap].apSsid, cfgSettings.apSSIDa) == 0 &&
-          strcmp(wifiAPs[ap].apPswd, cfgSettings.apPSWDa) == 0)
-          {
-            //lastWifiAp = ap;
-            found = true;
-            sprint(2,"WIFI AP FOUND ON LIFO INDEX: ", ap);
-            break;  
-        }    
-      }
-      if (!found){
-        /* push current AP to stack */
-        lastWifiAp++;
-        if (lastWifiAp >= maxWifiAps){
-          lastWifiAp = 0;
-        }
-        strcpy(wifiAPs[lastWifiAp].apSsid, cfgSettings.apSSIDa);
-        strcpy(wifiAPs[lastWifiAp].apPswd, cfgSettings.apPSWDa);
-      }      
-    }
-    // TO TEST WIFI AP LIFO
-    sprint(2, "LIFO APs - Last: ",lastWifiAp);
-    for(int ap = 0; ap < maxWifiAps; ap++){
-      sprint(2, wifiAPs[ap].apSsid, wifiAPs[ap].apPswd);
-    }
+///////////////////////////////////////////////////////////////////////////
+//// WIFI AP SETTINGS
+//////////////////////
+//    if (wifiConfigChanges){
+//      /* store the current wifi AP on the LIFO stack if not already there */
+//      bool found = false;
+//      for(int ap = 0; ap < maxWifiAps; ap++){
+//        /* find if AP is already stored */
+//        if ( 
+//          strcmp(wifiAPs[ap].apSsid, cfgSettings.apSSIDa) == 0 &&
+//          strcmp(wifiAPs[ap].apPswd, cfgSettings.apPSWDa) == 0)
+//          {
+//            //lastWifiAp = ap;
+//            found = true;
+//            sprint(2,"WIFI AP FOUND ON LIFO INDEX: ", ap);
+//            break;  
+//        }    
+//      }
+//      if (!found){
+//        /* push current AP to stack */
+//        lastWifiAp++;
+//        if (lastWifiAp >= maxWifiAps){
+//          lastWifiAp = 0;
+//        }
+//        strcpy(wifiAPs[lastWifiAp].apSsid, cfgSettings.apSSIDa);
+//        strcpy(wifiAPs[lastWifiAp].apPswd, cfgSettings.apPSWDa);
+//      }      
+//    }
+//    // TO TEST WIFI AP LIFO
+//    sprint(2, "LIFO APs - Last: ",lastWifiAp);
+//    for(int ap = 0; ap < maxWifiAps; ap++){
+//      sprint(2, wifiAPs[ap].apSsid, wifiAPs[ap].apPswd);
+//    }
 //////////////////////////////////////////////////////////////////////////
     
     sprint(1,"SAVING CONFIGURATION SETTINGS TO FLASH -- eeprom/saveAll()",);

@@ -180,12 +180,21 @@ void handleWifiSave() {
  * resets the wifiUp flag (to false) so the wifi/manageWifi fuction attempts to connect to verify credentials are valid
  * https://techtutorialsx.com/2016/10/22/esp8266-webserver-getting-query-parameters/
  */
+//    /* save the given ssid ("n") to ram struct field */
+//  httpServer.arg("n").toCharArray(cfgSettings.apSSIDa, sizeof(cfgSettings.apSSIDa) - 1);
+//  /* save the given wifi password ("p") to ram struct field */
+//  httpServer.arg("p").toCharArray(cfgSettings.apPSWDa, sizeof(cfgSettings.apPSWDa) - 1);
+//  sprint(2, "WIFI SAVE REQUEST: ", cfgSettings.apSSIDa);
+//  sprint(2, "REQUESTING CLIENT: ", httpServer.client().remoteIP());
+
     /* save the given ssid ("n") to ram struct field */
-  httpServer.arg("n").toCharArray(cfgSettings.apSSIDa, sizeof(cfgSettings.apSSIDa) - 1);
+  httpServer.arg("n").toCharArray(cfgSettings.apSSIDlast, sizeof(cfgSettings.apSSIDlast) - 1);
   /* save the given wifi password ("p") to ram struct field */
-  httpServer.arg("p").toCharArray(cfgSettings.apPSWDa, sizeof(cfgSettings.apPSWDa) - 1);
-  sprint(2, "WIFI SAVE REQUEST: ", cfgSettings.apSSIDa);
+  httpServer.arg("p").toCharArray(cfgSettings.apPSWDlast, sizeof(cfgSettings.apPSWDlast) - 1);
+  sprint(2, "WIFI SAVE REQUEST: ", cfgSettings.apSSIDlast);
   sprint(2, "REQUESTING CLIENT: ", httpServer.client().remoteIP());
+
+  
   /*
    * The Location response header indicates the URL to redirect a page to. 
    * It is only meaningful when served with a 3xx (redirection) or 201 (POST/created) status response.

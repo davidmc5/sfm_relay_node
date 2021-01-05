@@ -1,7 +1,30 @@
 
-#define FW_VERSION "1.37"
-//replace ap_ssid and ap_pswd with apSSIDa and apPSWDa
-
+#define FW_VERSION "1.38"
+/*
+ *  COMMIT NOTES
+ *  
+ *  Replaced apSSIDa/apPSWDa with apSSIDlast/apPSWDlast as the new functional aps
+ *  The other two APs A/B can only be changed via mqtt
+ *  The fact AP is hardcoded in firmware and used for intial factory testing
+ *  
+ *  added to settings struct: 
+ *  apSSIDlast --> this is the one being used
+ *  apPSWDlast
+ *  apSSIDa
+ *  apPSWDa
+ *  apSSIDb
+ *  apPSWDb
+ *  
+ *  There is also a hardcoded AP (apSSIDfact / apPSWDfact)
+ *  
+ *  TO DO NEXT:
+ *  
+ *  MAKE A void connectWlan() TO TEST LAST/A/B/FACT IN SEQUENCE TO FIND ONE THAT WORKS
+ *  START FAST BLINKING (SEARCHING AN AP)
+ *  IF A WORKING AP IS FOUND, STORE IN LAST AND SET LED ON
+ *  IF NOT, ENABLE SOFTAP AND SET SLOW BLINK (NO VALID AP FOUND) AND WAIT 1 MINUTE FOR CLIENT CONNECTION
+ *  IF A NEW AP IS CONFIGURED AND WORKS, STORE TO LAST.
+ */
 
 
 
@@ -26,7 +49,7 @@
  *    2 = ALERT & DEBUG & INFO
 */
 ///
-/// change DEBUG so it prints slectively DEBUG 0,2 (print only alert and debug)
+/// change DEBUG so it prints selectively DEBUG 0,2 (print only alert and debug)
 ///
 #define DEBUG 2 //Comment this out to disable console messages on production.
 
@@ -548,6 +571,8 @@ void setup() {
   sprint(2,"BOOTING: ", ESP.getResetInfo());
   sprint(2,"FIRMWARE: ", FW_VERSION);
 
+  WiFi.persistent(false);   /* Do not store wifi settings in flash - this is handled by handleHttp */ 
+  
   strcpy(cfgSettings.firstRun, "OK"); /* Assume flash data is OK on boot only to determine if they are valid */
   getCfgSettings();  /* load configuration settings from flash to ram */  
   /*
@@ -567,27 +592,31 @@ void setup() {
 ///////////////////////////////////////////////////////////////
     loadMqttBrokerDefaults();
   }
+
+
+ ////////vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
+ // CHANGE apSSID & apPSWD
+ 
   /* For testing: store factory wifi AP into first LIFO location */
 //  strcpy(wifiAPs[0].apSsid, apSSIDfact);
 //  strcpy(wifiAPs[0].apPswd, apPSWDfact);
 
   //// FOR TESTING WITH AN INVALID AP ON BOOT
-  strcpy(cfgSettings.apSSIDa, "bad-ssid");
-  strcpy(cfgSettings.apPSWDa, "bad-pswd");
-  sprint(2,"LOADED BAD WIFI SETTINGS (ON SETUP) FOR TESTING",);
-
-  WiFi.persistent(false);   /* Do not store wifi settings in flash - this is handled by handleHttp */ 
+//  strcpy(cfgSettings.apSSIDa, "bad-ssid");
+//  strcpy(cfgSettings.apPSWDa, "bad-pswd");
+//  sprint(2,"LOADED BAD WIFI SETTINGS (ON SETUP) FOR TESTING !!!!!!!!!!!!!!!!!!!!!!!!",);
 
 /////////////////////////////////////
 //  fixSettings(); //remove after this release 1.22
 ////////////////////////////////////
 
-  /* Display stored wifi APs on LIFO */
-  sprint(2, "LIFO APs - Last: ",lastWifiAp);
-  for(int ap = 0; ap < maxWifiAps; ap++){
-    sprint(2, wifiAPs[ap].apSsid, wifiAPs[ap].apPswd);
-  }
-  
+//  /* Display stored wifi APs on LIFO */
+//  sprint(2, "LIFO APs - Last: ",lastWifiAp);
+//  for(int ap = 0; ap < maxWifiAps; ap++){
+//    sprint(2, wifiAPs[ap].apSsid, wifiAPs[ap].apPswd);
+//  }
+ //////////^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 
   pinMode(LED, OUTPUT); /* configure the led pin as an output */
   //outputs appear to be at zero on start, driving the LED on.
   //setLED(LED, LED_OFF);
@@ -665,10 +694,11 @@ void setup() {
 void loop() {
  
   if(retryWifiFlag){
-    sprint(2, "Connecting to wifi SSID: ", cfgSettings.apSSIDa);
+    sprint(2, "Connecting to wifi SSID: ", cfgSettings.apSSIDlast);
     WiFi.disconnect(); /* Clear previous connection */   
-    WiFi.begin(cfgSettings.apSSIDa, cfgSettings.apPSWDa); /* connect to the ssid/pswd in ram */
-    
+//    WiFi.begin(cfgSettings.apSSIDa, cfgSettings.apPSWDa); /* connect to the ssid/pswd in ram */
+    WiFi.begin(cfgSettings.apSSIDlast, cfgSettings.apPSWDlast); /* connect to the ssid/pswd in ram */
+
     /////////
 //    WiFi.begin("invalid-ssid", "bad-password"); /* use this to test the led flashing - never connects*/
     /////////

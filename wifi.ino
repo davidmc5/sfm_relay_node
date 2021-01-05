@@ -140,32 +140,32 @@ void showSoftApClients(){
 
 
 
- void connectWlan() {
-  /*
-   * Attempt to connect to the provided ssid
-   * Resets the timer to start another wifi reconnect cycle
-   */
-  sprint(1, "---------------------------------------",);
-  sprint(1, "wifiUp Flag: ", wifiUp); 
-  sprint(1, "internetUp Flag: ", internetUp); 
-  sprint(1, "---------------------------------------",);
-  prevWifiStationState = WL_IDLE_STATUS; /* reset current wifi state flag to force checking internet access by fetching the public IP*/  
-  resetMqttBrokerStates(); /* Since we are re/connecting to wifi, set mqtt brokers status offline */ 
-  sprint(2, "Connecting to WiFi AP: ", cfgSettings.apSSIDa);
-  wifiUp = WiFi.status() == WL_CONNECTED; /* set wifi state flag */ 
-  if(wifiUp){
-    sprint(2, "WIFI IS UP NOW!",);
-  }
- } 
+// void connectWlan() {
+//  /*
+//   * Attempt to connect to the provided ssid
+//   * Resets the timer to start another wifi reconnect cycle
+//   */
+//  sprint(1, "---------------------------------------",);
+//  sprint(1, "wifiUp Flag: ", wifiUp); 
+//  sprint(1, "internetUp Flag: ", internetUp); 
+//  sprint(1, "---------------------------------------",);
+//  prevWifiStationState = WL_IDLE_STATUS; /* reset current wifi state flag to force checking internet access by fetching the public IP*/  
+//  resetMqttBrokerStates(); /* Since we are re/connecting to wifi, set mqtt brokers status offline */ 
+//  sprint(2, "Connecting to WiFi AP: ", cfgSettings.apSSIDlast);
+//  wifiUp = WiFi.status() == WL_CONNECTED; /* set wifi state flag */ 
+//  if(wifiUp){
+//    sprint(2, "WIFI IS UP NOW!",);
+//  }
+// } 
 
 
  void loadWifiDefaults(){
   /*
    * reset wifi AP to factory default
    */
-  strcpy(cfgSettings.apSSIDa, apSSIDfact);
-  strcpy(cfgSettings.apPSWDa, apPSWDfact);
-  sprint(2,"LOADED WIFI AP DEFAULT",);
+  strcpy(cfgSettings.apSSIDlast, apSSIDfact);
+  strcpy(cfgSettings.apPSWDlast, apPSWDfact);
+  sprint(2,"LOADED DEFAULT WIFI AP",);
  }
 
 

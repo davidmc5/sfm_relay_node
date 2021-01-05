@@ -13,26 +13,49 @@
  *    char ap_pswd[32];
  *    char ap_ok[3];
  */
-
 #define NUM_ELEMS(x)  (sizeof(x) / sizeof((x)[0]))
 #define cfgStartAddr 0
 
 struct cfgSettings_s{  
   char firstRun[3];       /* offset= 0 - Flag to detect very first boot of a new device: unitialized flash memory has garbage */
-  char apSSIDa[20];       /* offset= 3 */
-  char apPSWDa[20];       /* offset= 23 */
-  char site_id[10];       /* offset= 43 - Populated by initial setup or HELLO handshake */
-  char debug[5];          /* offset= 53 - s=serial, m=mqtt: example s0m2 = send 'alerts' to serial and 'all' to mqtt */
-  char node_type[20];     /* offset= 58 - node type:  r-16;s-16 */
-  char mqttServerA[20];   /* offset= 78 */
-  char mqttPortA[6];      /* offset= 98 */
-  char mqttUserA[20];     /* offset= 104 */
-  char mqttPasswordA[20]; /* offset= 124 */
-  char mqttServerB[20];   /* offset= 144 */
-  char mqttPortB[6];      /* offset= 164 */
-  char mqttUserB[20];     /* offset= 170 */
-  char mqttPasswordB[20]; /* offset= 190 */
+  char apSSIDlast[20];       /* offset= 3 */
+  char apPSWDlast[20];       /* offset= 23 */
+  
+  char apSSIDa[20];       /* offset= 43 */
+  char apPSWDa[20];       /* offset= 63 */
+  
+  char apSSIDb[20];       /* offset= 83 */
+  char apPSWDb[20];       /* offset= 103 */
+  
+  char site_id[10];       /* offset= 123 - Populated by initial setup or HELLO handshake */
+  char debug[5];          /* offset= 133 - s=serial, m=mqtt: example s0m2 = send 'alerts' to serial and 'all' to mqtt */
+  char node_type[20];     /* offset= 138 - node type:  r-16;s-16 */
+  char mqttServerA[20];   /* offset= 158 */
+  char mqttPortA[6];      /* offset= 178 */
+  char mqttUserA[20];     /* offset= 184 */
+  char mqttPasswordA[20]; /* offset= 204 */
+  char mqttServerB[20];   /* offset= 224 */
+  char mqttPortB[6];      /* offset= 244 */
+  char mqttUserB[20];     /* offset= 250 */
+  char mqttPasswordB[20]; /* offset= 270 */
 };
+
+//struct cfgSettings_s{  
+//  char firstRun[3];       /* offset= 0 - Flag to detect very first boot of a new device: unitialized flash memory has garbage */
+//  char apSSIDa[20];       /* offset= 3 */
+//  char apPSWDa[20];       /* offset= 23 */
+//  char site_id[10];       /* offset= 43 - Populated by initial setup or HELLO handshake */
+//  char debug[5];          /* offset= 53 - s=serial, m=mqtt: example s0m2 = send 'alerts' to serial and 'all' to mqtt */
+//  char node_type[20];     /* offset= 58 - node type:  r-16;s-16 */
+//  char mqttServerA[20];   /* offset= 78 */
+//  char mqttPortA[6];      /* offset= 98 */
+//  char mqttUserA[20];     /* offset= 104 */
+//  char mqttPasswordA[20]; /* offset= 124 */
+//  char mqttServerB[20];   /* offset= 144 */
+//  char mqttPortB[6];      /* offset= 164 */
+//  char mqttUserB[20];     /* offset= 170 */
+//  char mqttPasswordB[20]; /* offset= 190 */
+//};
 
 /////////// CHANGE TO Settings_s, settingsRam and settingsFlash
 ///////////////////////////////////////////////////
@@ -53,6 +76,8 @@ char *structFlashBase = (char *)settingsFlashPtr; //cast the base flash as a poi
  * THIS COULD BE SIMPLIED BY USING X_MACROS
  * https://stackoverflow.com/a/38427990
  * http://www.c4learn.com/c-programming/c-initializing-array-of-structure/
+ * 
+ * ALL FIELD NAMES ARE LESS THAN 15 CHARACTERS. WE CAN SET char name[15] TO SAVE 90 BYTES
  */
 struct Field_s{
   char name[20];
@@ -66,32 +91,59 @@ struct Field_s{
  * 
  * mqtt/unsavedSettingsFound()
  */
-struct Field_s field[] = {
+
+ struct Field_s field[] = {
   {"firstRun", 0, 3},
-  {"apSSIDa", 3, 20},
-  {"apPSWDa", 23, 20},
-  {"site_id", 43, 10},
-  {"debug", 53, 5},
-  {"node_type", 58, 20},
-  {"mqttServerA", 78, 20},
-  {"mqttPortA", 98, 6},
-  {"mqttUserA", 104, 20},
-  {"mqttPasswordA", 124, 20},
-  {"mqttServerB", 144, 20},
-  {"mqttPortB", 164, 6},
-  {"mqttUserB", 170, 20},
-  {"mqttPasswordB", 190, 20}
+  
+  {"apSSIDlast", 3, 20},
+  {"apPSWDlast", 23, 20},
+  
+  {"apSSIDa", 43, 20},
+  {"apPSWDa", 63, 20},
+  
+  {"apSSIDb", 83, 20},
+  {"apPSWDb", 103, 20},
+  
+  {"site_id", 123, 10},
+  {"debug", 133, 5},
+  {"node_type", 138, 20},
+  {"mqttServerA", 158, 20},
+  {"mqttPortA", 178, 6},
+  {"mqttUserA", 184, 20},
+  {"mqttPasswordA", 204, 20},
+  {"mqttServerB", 224, 20},
+  {"mqttPortB", 244, 6},
+  {"mqttUserB", 250, 20},
+  {"mqttPasswordB", 270, 20}
 };
 
+//struct Field_s field[] = {
+//  {"firstRun", 0, 3},
+//  {"apSSIDa", 3, 20},
+//  {"apPSWDa", 23, 20},
+//  {"site_id", 43, 10},
+//  {"debug", 53, 5},
+//  {"node_type", 58, 20},
+//  {"mqttServerA", 78, 20},
+//  {"mqttPortA", 98, 6},
+//  {"mqttUserA", 104, 20},
+//  {"mqttPasswordA", 124, 20},
+//  {"mqttServerB", 144, 20},
+//  {"mqttPortB", 164, 6},
+//  {"mqttUserB", 170, 20},
+//  {"mqttPasswordB", 190, 20}
+//};
+
+
 ////////////////////////////////////
-// storage for the last 4 good wifi APs 
-struct wifiAP_s{
-  char apSsid[20];
-  char apPswd[20];
-};
-const int maxWifiAps = 4; /* maximum number of previous good wifi APs to store */
-struct wifiAP_s wifiAPs[maxWifiAps]{0}; /* LIFO stack for the most recent valid APs - Intialize all to null*/
-int lastWifiAp = 0; /* Store index to the current valid wifi AP */
+//// storage for the last 4 good wifi APs 
+//struct wifiAP_s{
+//  char apSsid[20];
+//  char apPswd[20];
+//};
+//const int maxWifiAps = 4; /* maximum number of previous good wifi APs to store */
+//struct wifiAP_s wifiAPs[maxWifiAps]{0}; /* LIFO stack for the most recent valid APs - Intialize all to null*/
+//int lastWifiAp = 0; /* Store index to the current valid wifi AP */
 
 ///////////////////////////////////
 
