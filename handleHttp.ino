@@ -146,36 +146,40 @@ return Page;
 
 
 
-/** Wifi config page handler */
 void handleWifi() {
+  /*
+   * root configuration page
+   */
   sprint(2, "SENDING CONFIGURATION PAGE TO CLIENT AT: ", httpServer.client().remoteIP());
 
+  /*
+   * The Location response header indicates the URL to redirect a page to. 
+   * It is only meaningful when served with a 3xx (redirection) or 201 (POST/created) status response.
+   * https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Location
+   */ 
   //httpServer.sendHeader("Location", "/", true); ///////FOR TESTING
   
   httpServer.sendHeader("Cache-Control", "no-cache, no-store, must-revalidate");
   httpServer.sendHeader("Pragma", "no-cache");
   httpServer.sendHeader("Expires", "-1");
-  String Page = configPage();
-  
+  String Page = configPage();  
 //  httpServer.send(302, "text/html", Page);
-  httpServer.send(200, "text/html", Page);
-  
-  httpServer.client().stop();   
+  httpServer.send(200, "text/html", Page); 
+//  httpServer.client().stop(); 
   return;
 }
 
 
+void handleWifiSave() {
 /*
- * handleWifiSave()
- * 
- * Handle the WLAN save htlm form and redirects to WLAN config page again
- * https://techtutorialsx.com/2016/10/22/esp8266-webserver-getting-query-parameters/
+ * Captures SSID/PSWD arguments
+ * Redirects to waiting page /configWait
+ * After a timeout the waiting page will redirect to root config page again
  * 
  * This function stores in ram (only) the ssid (argument = "n") and pswd (argument = "p") entered in the captive portal 
  * resets the wifiUp flag (to false) so the wifi/manageWifi fuction attempts to connect to verify credentials are valid
- * 
+ * https://techtutorialsx.com/2016/10/22/esp8266-webserver-getting-query-parameters/
  */
-void handleWifiSave() {
     /* save the given ssid ("n") to ram struct field */
   httpServer.arg("n").toCharArray(cfgSettings.apSSIDa, sizeof(cfgSettings.apSSIDa) - 1);
   /* save the given wifi password ("p") to ram struct field */
@@ -184,7 +188,7 @@ void handleWifiSave() {
   sprint(2, "REQUESTING CLIENT: ", httpServer.client().remoteIP());
   /*
    * The Location response header indicates the URL to redirect a page to. 
-   * It is only meaningful when served with a 3xx (redirection) or 201 (created) status response.
+   * It is only meaningful when served with a 3xx (redirection) or 201 (POST/created) status response.
    * https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Location
    */ 
   httpServer.sendHeader("Location", "/configWait", true);
@@ -215,7 +219,7 @@ String updatePage(){
   Page = F(
             "<html>"
               "<head>"
-                "<meta http-equiv='refresh' content='5 url= /'/>"
+                "<meta http-equiv='refresh' content='10 url= /'/>"
               "<style>"
                 "body{color: black;}"
                 "h1{font-size: 100px; padding: 20px 20px 20px 40px;}"

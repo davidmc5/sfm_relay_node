@@ -1,5 +1,5 @@
 
-#define FW_VERSION "1.36"
+#define FW_VERSION "1.37"
 //replace ap_ssid and ap_pswd with apSSIDa and apPSWDa
 
 
@@ -196,6 +196,7 @@ char tempBuffer[mqttMaxPayloadLength]; /*used for strcat/strcpy /payload and tem
 uint16_t relayState = 0xFFFF; //all relays off
 
 
+////// PUT ALL THESE FUNCTION DEFINITIONS ON SEPARATE FILES AND SET DEBUG TRAP
 
 /*
  * LED Control
@@ -206,10 +207,10 @@ uint16_t relayState = 0xFFFF; //all relays off
 const int LED = 12; //GPIO-12 ESP-WROOM - PWM pin
 const int LED_ON = 0; //active low
 const int LED_OFF = 1;
-
-
-////// PUT ALL THESE FUNCTION DEFINITIONS ON SEPARATE FILES AND SET DEBUG TRAP
-void setLED(int led, int action) {                          
+void setLED(int led, int action) { 
+  /*                         
+   * action options: LED_ON, LED_OFF                      
+   */
   digitalWrite(led, action);      
   //digitalWrite(led,!digitalRead(led));   // Change the state of the LED
 }
@@ -455,19 +456,23 @@ PubSubClient mqttClientB(espClientB);
  * showFreeHeapOnChange()
  * 
  * Monitors memory leaks
- * Display a message when the free heap varies more than 1000 * 
+ * Display a message when the free heap varies more than 1000
+ * https://github.com/esp8266/Arduino/blob/master/cores/esp8266/Esp.cpp
+ * uint32_t EspClass::getFreeHeap(void)
  */
-int prevFreeHeap = 0;
+uint32 prevFreeHeap = 0; 
 void showFreeHeapOnChange(){  
-  if (prevFreeHeap == ESP.getFreeHeap())
-    return;  
-  if (prevFreeHeap - 1000 > ESP.getFreeHeap()){
-    sprint(0, "FREE HEAP DECREASED: ", ESP.getFreeHeap());        
-  }else  
-    if (prevFreeHeap + 1000 < ESP.getFreeHeap()){
-      sprint(2, "FREE HEAP INCREASED: ", ESP.getFreeHeap());
+  if ( prevFreeHeap > ESP.getFreeHeap()+5000 ){
+    sprint(0, "FREE HEAP DECREASED TO: ", ESP.getFreeHeap()); 
+  }else{  
+    if ( prevFreeHeap + 5000 < ESP.getFreeHeap()){
+      sprint(2, "FREE HEAP INCREASED TO: ", ESP.getFreeHeap());
     }
-  prevFreeHeap = ESP.getFreeHeap();
+  }
+  if (ESP.getFreeHeap() < 20000){
+    sprint(0, "FREE HEAP IS GETTING LOW. POTENTIAL MEMORY LEAK! - ", ESP.getFreeHeap());
+  }
+  prevFreeHeap = ESP.getFreeHeap();  
 }
 
 ////////////////////////////////////////////////////////////
@@ -515,7 +520,7 @@ void monitorEvents(){
     }else{
       sprint(2, "SOFTAP POINT ENABLED. Connected Clients: ", WiFi.softAPgetStationNum());
     }
-    sprint(2,"",); /* separator empty line for log */ 
+//    sprint(2,"",); /* separator empty line for log */ 
   }
 }
  
@@ -540,8 +545,8 @@ void setup() {
    * If no previous crash it will report: "External System" or "Power On"
    * After a software upgrade: "Software/System restart"
    */
-  sprint(0,"BOOTING: ", ESP.getResetInfo());
-  sprint(0,"FIRMWARE: ", FW_VERSION);
+  sprint(2,"BOOTING: ", ESP.getResetInfo());
+  sprint(2,"FIRMWARE: ", FW_VERSION);
 
   strcpy(cfgSettings.firstRun, "OK"); /* Assume flash data is OK on boot only to determine if they are valid */
   getCfgSettings();  /* load configuration settings from flash to ram */  
@@ -553,7 +558,7 @@ void setup() {
    * WE MIGHT NOT NEED THIS IF THE connectWlan FUNCTION TAKES CARE OF FINDING A WORKING AP
    */
   if ( strcmp(cfgSettings.firstRun, "OK") != 0){
-    sprint(1,"FLASH DATA INVALID - LOADING DEFAULTS",);
+    sprint(0,"FLASH DATA INVALID - LOADING DEFAULTS",);
     /* set wifi AP and mqtt brokers to factory defaults */
     ///////////////////////////////////////////////////////////
     /////////////////////// DO NOT PRE-POPULATE TO MAKE IT FAIL ON BOOT FOR TESTING
@@ -571,24 +576,19 @@ void setup() {
   strcpy(cfgSettings.apPSWDa, "bad-pswd");
   sprint(2,"LOADED BAD WIFI SETTINGS (ON SETUP) FOR TESTING",);
 
-
-  /* Do not store wifi settings in flash - this is handled by handleHttp */  
-  WiFi.persistent(false);
+  WiFi.persistent(false);   /* Do not store wifi settings in flash - this is handled by handleHttp */ 
 
 /////////////////////////////////////
 //  fixSettings(); //remove after this release 1.22
 ////////////////////////////////////
-
 
   /* Display stored wifi APs on LIFO */
   sprint(2, "LIFO APs - Last: ",lastWifiAp);
   for(int ap = 0; ap < maxWifiAps; ap++){
     sprint(2, wifiAPs[ap].apSsid, wifiAPs[ap].apPswd);
   }
-
   
-  ////TASK-1:
-  pinMode(LED, OUTPUT); //configure the led pin as an output.
+  pinMode(LED, OUTPUT); /* configure the led pin as an output */
   //outputs appear to be at zero on start, driving the LED on.
   //setLED(LED, LED_OFF);
 
@@ -674,10 +674,10 @@ void loop() {
     /////////
     
     retryWifiFlag = false; /* don't check again until after new retry time */
-    if (WiFi.softAPgetStationNum() > 0){
-      retryWifiTimer.attach(10, retryWifi); /* start retry timer - calls retryWifi() on timeout*/
-    }else{ /* wait longer to retry APs when a client is connected to prioritize configuration tasks */
-      retryWifiTimer.attach(60, retryWifi); /* start retry timer - calls retryWifi() on timeout*/
+    if (WiFi.softAPgetStationNum() > 0){ /* start retry timer - calls retryWifi() on timeout*/
+      retryWifiTimer.attach(60, retryWifi); /* wait longer to retry when a client is connected to prioritize configuration tasks */
+    }else{
+      retryWifiTimer.attach(10, retryWifi); /* no clients connected. OK to retry more often */
     }
   }
   
