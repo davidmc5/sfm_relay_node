@@ -135,7 +135,7 @@ void showSoftApClients(){
   }
   wifi_softap_free_station_info(); /* free memory */
 //  wifiSoftApClientGotIp = false; /* reset event flag */
-  Serial.println();
+//  Serial.println();
 }
 
 
@@ -171,14 +171,19 @@ void showSoftApClients(){
 
  void checkInternet(){
   /*
-   * 
+   * Get the public IP address
+   * If it succeeds, set the internetUp flag
    */
   HTTPClient http;
   //////////////////////////////////////////////////////////
-  /////// >>> MAKE THIS SERVICE SITE CONFIGURABLE VIA MQTT
+  /////// >>> MAKE EACH SERVICE SITE CONFIGURABLE VIA MQTT
   //////////////////////////////////////////////////////////
   http.begin("http://api.ipify.org/?format=text");
-  int httpCode = http.GET(); //Send the request
+  int httpCode = http.GET(); /* Send http GET request to API */
+  /*
+   * if http.get return code is less than zero, asume internet down
+   * https://github.com/esp8266/Arduino/issues/5137#issue-360559415
+   */
   if (httpCode > 0){ /* internet is up */
     /* convert const String (http.getString)to const char* (wanIp) */
     //////////////////////////////////////////////////////////////////////////////////////
@@ -186,30 +191,13 @@ void showSoftApClients(){
     //another way:
     ///// change sprintf to the more secure snprintf (will need to add the sizeof the string plus one for the null terminator
     sprintf(wanIp, "%s", http.getString().c_str());
-    sprint(2,"Public IP: ", wanIp);
+    sprint(2,"EVENT: INTERNET IS UP - Public IP: ", wanIp);
     internetUp = true;
-   /* 
-    * Set a unique client id to connect to mqtt broker (client prefix + node's mac)
-    * This assignement needs to be done after succesful connection to wifi (WITH INTERNET TESTED!)
-    * since we need the wifi module fully operational to query its MAC
-    * Also, it needs to be assigned before connecting to mqtt brokers
-    * If MAC is not yet populated, client IDs from differEnt modules will be the same (just the common preffix)
-    * and will disconnect each other when trying to connect to a broker!
-    */       
-    strcpy(mqttClientId, mqttClientPrefix);
-    strcat(mqttClientId, nodeId);
+    wifiStatusChange = true;
   }else{
-  /*
-   * No internet access - reset flags
-   * 
-   * if http.get return code is less than zero, asume internet down
-   * https://github.com/esp8266/Arduino/issues/5137#issue-360559415
-   * ////////////////////////////////////////////////////////////////////
-   * try other wifi APs (including the default for factory testing)
-   */
+    /* No internet access - reset flags */
     sprint(0, "WiFI is Up but no Internet",); 
     internetUp = false;
-    resetMqttBrokerStates();
   }
   http.end();   //Close connection
  }
@@ -220,9 +208,6 @@ void showSoftApClients(){
 //NEEDS TO CHECK MULTIPLE APs, WITH THE SAME or different SSID and/or passwords
 // AND fallback to FACTORY TEST SSID 
 //Do we want to make the factory ssid match the node mac as password? That way it is unique!
-
-
-
 
 // Load values from flash into struct, or null for none
 //build functions to:

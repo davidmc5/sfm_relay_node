@@ -64,8 +64,8 @@
  * 
  * ESP8266 Arduino Core Documentation:
  * https://buildmedia.readthedocs.org/media/pdf/arduino-esp8266/docs_to_readthedocs/arduino-esp8266.pdf
+ * https://arduino-esp8266.readthedocs.io/en/latest/libraries.html
  * 
- * Station Class reference
  * 
  * *** ESP8266 Webserver: Accessing the body of a HTTP request
  * https://techtutorialsx.com/2017/03/26/esp8266-webserver-accessing-the-body-of-a-http-request/
@@ -197,8 +197,10 @@ char mqttPayload[mqttMaxPayloadLength];
 char mqttClientId[20]; /* Unique client ID (clientPrefix+MAC) to connect to mqtt broker. Used by the mqtt module: mqttClient.connect()*/ 
 
 ////////////Change the following two to bool to save space:
-uint8_t mqttBrokerUpA = 0; /* Primary mqtt broker status flag. 0=failed / 1 = OK */
-uint8_t mqttBrokerUpB = 0; /* Backup mqtt broker status flag. 0=failed / 1 = OK */
+//uint8_t mqttBrokerUpA = 0; /* Primary mqtt broker status flag. 0=failed / 1 = OK */
+//uint8_t mqttBrokerUpB = 0; /* Backup mqtt broker status flag. 0=failed / 1 = OK */
+bool mqttBrokerUpA = false; /* Primary mqtt broker status flag */
+bool mqttBrokerUpB = false; /* Backup mqtt broker status flag */
 /////////////////////////////////
 
 uint8_t mqttBrokerState = 0; /* state machine for sending updates -- see mqtt module */
@@ -249,7 +251,12 @@ void setLED(int led, int action) {
 
 /* flags set by the WIFI callback functions */
 bool wifiStatusChange = false;
-bool wifiStationUp = false;
+
+//bool wifiStationUp = false;
+bool wifiStationConnected = false;
+bool wifiStationDisconnected = false;
+bool wifiReconnectAttempt = false; /* used to ignore wifiStationDisconnected event when attempting to reconnect */
+
 bool wifiStationGotIp = false;
 bool wifiSoftApClientGotIp = false;
 bool wifiSoftApClientConnected = false;
@@ -306,50 +313,50 @@ void retryWifi(){
 /* triggers when device (in station mode) connects to AP */
 WiFiEventHandler stationConnectedHandler;
 void onStationConnected(const WiFiEventStationModeConnected event){
-  wifiStationUp = wifiStatusChange = true;
+  wifiStationConnected = true;
+  wifiStatusChange = true;
 }
 
 /* triggers when the device (in station mode) disconnects from the AP */
 WiFiEventHandler stationDisconnectedtHandler;
 void onStationDisconnected(const WiFiEventStationModeDisconnected event){
-  ledBlink();
-  wifiStationUp = false;
-  wifiStationGotIp = false;
-  wifiUp = false;
-  internetUp = false;
-  strcpy(wanIp, "0.0.0.0"); /* Clear WAN IP */
-  if (prevWifiStationState != WiFi.status()){
-    resetMqttBrokerStates(); /* set brokers' status in failed mode - brokers are tested by mqtt/manageMqtt()*/
-    prevWifiStationState = WiFi.status();
+  if (!wifiReconnectAttempt){
+    wifiStationDisconnected = true;
     wifiStatusChange = true;
+    wifiUp = false;
+    internetUp = false;
   }
+  wifiReconnectAttempt = false;
 }
 
 /* triggers when the NODE/STATION gets an IP from the Access Point */
 WiFiEventHandler stationGotIpHandler;
 void onStationGotIp(const WiFiEventStationModeGotIP event){
   wifiStationGotIp = true;
+  wifiStatusChange = true;  
   wifiUp = true;
-  wifiStatusChange = true;
-  retryWifiTimer.detach();
+  retryWifiTimer.detach(); /* Stop retrying connecting to wifi - Connected with an IP! */ 
+  
+  //// FOR TESTING! REMOVE THIS BLOCKING COMMAND FROM CALLBACK
+  sprint(1, "STATION IP: ", event.ip);
 }
 
 /* triggers when a device connects to the softAP. Event has MAC of the device */
 WiFiEventHandler softApClientConnected;
 void onSoftAPclientConnected(const WiFiEventSoftAPModeStationConnected event){
-  /* get MAC of client that just connected to softAP */
-  snprintf(clientMac, sizeof(clientMac), MACSTR, MAC2STR(event.mac));
   wifiSoftApClientConnected = true;
   wifiStatusChange = true;
+  /* get MAC of client that just connected to softAP */
+  snprintf(clientMac, sizeof(clientMac), MACSTR, MAC2STR(event.mac));
 }
  
 /* triggers when a device disconnects from the softAP */
 WiFiEventHandler softApClientDisconnected;
 void onSoftAPclientDisconnected(const WiFiEventSoftAPModeStationDisconnected event){
-  /* get MAC of client that just disconnected from softAP */
-  snprintf(clientMac, sizeof(clientMac), MACSTR, MAC2STR(event.mac));
   wifiSoftApClientDisconnected = true;
   wifiStatusChange = true;
+  /* get MAC of client that just disconnected from softAP */
+  snprintf(clientMac, sizeof(clientMac), MACSTR, MAC2STR(event.mac));
 }
 /*
  * Definitions to copy a mac address (in array locations 0-5) to a string
@@ -359,7 +366,7 @@ void onSoftAPclientDisconnected(const WiFiEventSoftAPModeStationDisconnected eve
   
 /* 
  *  Callback for all wifi events
-   *  But only usedd for event:
+   *  But only used for event:
    *   WIFI_EVENT_SOFTAPMODE_DISTRIBUTE_STA_IP
  *  
  *  WiFi.onEvent is DEPRECATED!!!
@@ -369,7 +376,7 @@ void onSoftAPclientDisconnected(const WiFiEventSoftAPModeStationDisconnected eve
  *  
  *  TRY ADDING THE 'DISTRIBUTE_STA_IP' EVENT IN THIS LIBRARY:
    *  https://github.com/esp8266/Arduino/blob/master/libraries/ESP8266WiFi/src/ESP8266WiFiGeneric.cpp#L94
-   *  It seems that the new event WIFI_EVENT_SOFTAPMODE_DISTRIBUTE_STA_IP
+   *  It seems that this event WIFI_EVENT_SOFTAPMODE_DISTRIBUTE_STA_IP
    *  triggers when an IP is assigned to a softAP client (Need to confirm)
  *  
  *  This callback is registered in setup() with the line:
@@ -498,34 +505,45 @@ void showFreeHeapOnChange(){
   prevFreeHeap = ESP.getFreeHeap();  
 }
 
-////////////////////////////////////////////////////////////
-//// WHERE TO CALL CHECK FUNCTIONS, HERE OR IN LOOP()????
-///////////////////////////////////////////////////////////
 void monitorEvents(){
   /* print status changes */
   if (wifiStatusChange){
     wifiStatusChange = false;
-    sprint(2, "WIFI STATUS ---------------------", );
-
+    sprint(2, "",); /* add a blank line separator for easy reading */
+    sprint(2, "WIFI EVENTS --------------------", );
     if(wifiSoftApClientConnected){
-      sprint(2, "EVENT: SOFTAP CLIENT CONNECTED. MAC: ", clientMac);
       wifiSoftApClientConnected = false;
+      sprint(2, "EVENT: SOFTAP CLIENT CONNECTED. MAC: ", clientMac);
     }
     if(wifiSoftApClientDisconnected){
+      wifiSoftApClientDisconnected = false;      
       sprint(2, "EVENT: SOFTAP CLIENT DISCONNECTED. MAC: ", clientMac);
       showSoftApClients();
-      wifiSoftApClientDisconnected = false;
-    }   
-    if(wifiStationUp){
-      sprint(2, "WIFI STATION CONNECTED",);
-    }else{
-        sprint(0, "WIFI STATION NOT CONNECTED!",);
+    }
+    if (wifiSoftApClientGotIp){
+      sprint(2, "EVENT: SOFTAP CLIENT GOT IP",);
+      wifiSoftApClientGotIp = false; /* reset event flag */
+      showSoftApClients(); /* display the clients connected to the softAP if an IP assignment event got triggered */
+    }
+    if(wifiStationConnected){
+      wifiStationConnected = false;
+      sprint(2, "EVENT: WIFI STATION CONNECTED",);
+    }
+    if(wifiStationDisconnected){
+      wifiStationDisconnected = false;
+      strcpy(wanIp, "0.0.0.0"); /* Clear WAN IP */
+      sprint(0, "EVENT: WIFI STATION DISCONNECTED!",);
     }
     if (wifiStationGotIp){
-      sprint(2, "WIFI UP",);
+      wifiStationGotIp = false;
+      sprint(2, "EVENT: WIFI STATION GOT IP: ", WiFi.localIP());
+    }    
+    sprint(2, "NODE STATUS ---------------------", );
+    if(wifiUp){
+      sprint(2, "STATION WIFI UP - LOCAL IP: ", WiFi.localIP());
     }else{
-      sprint(0, "WIFI DOWN",);
-    }
+      sprint(0, "STATION WIFI DOWN!",);
+    }    
     if(internetUp){
       sprint(2, "INTERNET UP",);
     }else{
@@ -536,16 +554,23 @@ void monitorEvents(){
       sprint(2, "MQTT UP: ", mqttBrokerUpA + mqttBrokerUpB);
     }else{
       ledBlink();
-      sprint(0, "MQTT DOWN",);
+      sprint(0, "MQTT BROKERS DOWN",);
     }    
     if(softAPoffFlag){
       sprint(2, "SOFTAP POINT DISSABLED", );
     }else{
       sprint(2, "SOFTAP POINT ENABLED. Connected Clients: ", WiFi.softAPgetStationNum());
     }
-//    sprint(2,"",); /* separator empty line for log */ 
+    sprint(2,"Heap Fragmentation (< 50% is good): ", ESP.getHeapFragmentation());  /* 0% is clean. 50% OK */
+    if (ESP.getHeapFragmentation() > 50){
+      sprint(0, "HEAP FRAGMENTATION IS HIGH: ", ESP.getHeapFragmentation());
+    }
+    showFreeHeapOnChange();
+    sprint(2,"",); /* add a blank line for readability */
   }
 }
+
+
  
  
 /***********************************************************/
@@ -568,8 +593,15 @@ void setup() {
    * If no previous crash it will report: "External System" or "Power On"
    * After a software upgrade: "Software/System restart"
    */
-  sprint(2,"BOOTING: ", ESP.getResetInfo());
-  sprint(2,"FIRMWARE: ", FW_VERSION);
+  sprint(2, "BOOTING: ", ESP.getResetInfo());
+  sprint(2, "FIRMWARE: ", FW_VERSION);
+  sprint(2, "ESP CHIP ID: ", ESP.getChipId());
+  sprint(2, "Core Version: ", ESP.getCoreVersion());
+  sprint(2, "SDK Version: ", ESP.getSdkVersion());
+  if (!ESP.checkFlashCRC()){
+    sprint(0, "FLASH CORRUPTED!",);
+  }
+  
 
   WiFi.persistent(false);   /* Do not store wifi settings in flash - this is handled by handleHttp */ 
   
@@ -585,11 +617,8 @@ void setup() {
   if ( strcmp(cfgSettings.firstRun, "OK") != 0){
     sprint(0,"FLASH DATA INVALID - LOADING DEFAULTS",);
     /* set wifi AP and mqtt brokers to factory defaults */
-    ///////////////////////////////////////////////////////////
-    /////////////////////// DO NOT PRE-POPULATE TO MAKE IT FAIL ON BOOT FOR TESTING
-//    strcpy(cfgSettings.apSSIDa, apSSIDfact);
-//    strcpy(cfgSettings.apPSWDa, apPSWDfact);
-///////////////////////////////////////////////////////////////
+    strcpy(cfgSettings.apSSIDlast, apSSIDfact);
+    strcpy(cfgSettings.apPSWDlast, apPSWDfact);
     loadMqttBrokerDefaults();
   }
 
@@ -647,7 +676,6 @@ void setup() {
   stationGotIpHandler = WiFi.onStationModeGotIP(&onStationGotIp); /* station got IP from AP */
   softApClientConnected = WiFi.onSoftAPModeStationConnected(&onSoftAPclientConnected); /* a device connectected to softAP */
   softApClientDisconnected = WiFi.onSoftAPModeStationDisconnected(&onSoftAPclientDisconnected); /* a device disconnected from softAP */
-
   /*
    * Register the callback function softApDistributeIpEvent for wifi event, WIFI_EVENT_SOFTAPMODE_DISTRIBUTE_STA_IP
    * 
@@ -656,19 +684,20 @@ void setup() {
    */
   WiFi.onEvent(softApDistributeIpEvent, WIFI_EVENT_SOFTAPMODE_DISTRIBUTE_STA_IP); 
 
-  
-  ////dissable callback registration: too many probes from devices. Uncomment below for testing only!
-  //probeRequestPrintHandler = WiFi.onSoftAPModeProbeRequestReceived(&onProbeRequestPrint);
-
-//////////////////////////
-
-
-
   ledBlink();
 
   startSoftAP(); /* Start softAP, DNS and HTTP servers for client configuration */
-
-
+  
+   /* 
+    * Set a unique mqtt client id (client prefix + node's mac)
+    * Set this ID after wifi module (softAP) is configured and up to be able to query its MAC
+    * This id is needed to connect to mqtt brokers 
+    * If the MAC is not yet available, client IDs from different nodes will be the same (using just the common preffix)
+    * and will disconnect each other when trying to connect to a broker!
+    */       
+    strcpy(mqttClientId, mqttClientPrefix); /* add mqtt client prefix */
+    strcat(mqttClientId, nodeId); /* add the full mac (nodeId) */
+    
   /*
    * Initialize I2C 
    * 
@@ -677,6 +706,7 @@ void setup() {
    */
   i2cInit(&relayState); /* Initialize I2C */
   wifiScannedIps = WiFi.scanNetworks(); /* get the number of wifi APs found */
+
 
   /////////////////
 
@@ -692,44 +722,51 @@ void setup() {
 /***********************************************************/
 
 void loop() {
+
+  monitorEvents(); /* Check if any event flags have been set */
  
   if(retryWifiFlag){
-    sprint(2, "Connecting to wifi SSID: ", cfgSettings.apSSIDlast);
-    WiFi.disconnect(); /* Clear previous connection */   
-//    WiFi.begin(cfgSettings.apSSIDa, cfgSettings.apPSWDa); /* connect to the ssid/pswd in ram */
-    WiFi.begin(cfgSettings.apSSIDlast, cfgSettings.apPSWDlast); /* connect to the ssid/pswd in ram */
-
-    /////////
-//    WiFi.begin("invalid-ssid", "bad-password"); /* use this to test the led flashing - never connects*/
-    /////////
-    
-    retryWifiFlag = false; /* don't check again until after new retry time */
-    if (WiFi.softAPgetStationNum() > 0){ /* start retry timer - calls retryWifi() on timeout*/
-      retryWifiTimer.attach(60, retryWifi); /* wait longer to retry when a client is connected to prioritize configuration tasks */
-    }else{
-      retryWifiTimer.attach(10, retryWifi); /* no clients connected. OK to retry more often */
+    retryWifiFlag = false; /* don't check again until after new retry time is up*/
+    /*
+     * getNextAp()
+     * 
+     * selects the next AP:
+     * get settings from flash (not RAM)
+     * 0: use current apSSIDlast
+     * 1: use A
+     * 2: use B
+     * 3: use factory 
+     * Increase count and reset to 0 if 3 or more
+     * If contents of selected ssid are null, get next one
+     * on connect, set count to zero
+     */    
+    sprint(2, "CONNECTING TO WIFI SSID: ", cfgSettings.apSSIDlast);
+    wifiReconnectAttempt = true;
+    WiFi.disconnect(); /* Clear previous connection - will generate a disconnect event */ 
+    WiFi.begin(cfgSettings.apSSIDlast, cfgSettings.apPSWDlast); /* connect to the last ssid/pswd in ram */
+   
+    /* start wifi retry timer - calls retryWifi() on timeout*/
+    if (WiFi.softAPgetStationNum() > 0){ /* Clients connected */
+      retryWifiTimer.attach(30, retryWifi); /* wait longer to retry when a client is connected to prioritize configuration tasks over wifi reconnects */
+    }else{ /* no clients connected. Retry more often */
+      retryWifiTimer.attach(5, retryWifi); 
     }
   }
+  /* service dns requests from softAP clients */
+  if (!softAPoffFlag){ //////////////// CONVERT THIS TO SOFTAPUP FLAG
+      dnsServer.processNextRequest();    
+  }
+  /* service http requests */     
+  httpServer.handleClient(); /* service http requests from softAP and wlan clients */
   
-  dnsServer.processNextRequest();
-   
-  httpServer.handleClient(); /* service http requests from clients */
-  
-  monitorEvents(); /* Check if any event flags have been set */
-
   if (wifiUp && !internetUp){
-    wifiStatusChange = true;
-    resetMqttBrokerStates();
     checkInternet();
   }
   
   if (internetUp){
     manageMqtt();
-  }
-
-  if (wifiSoftApClientGotIp){
-    showSoftApClients(); /* display the clients connected to the softAP if an IP assignment event got triggered */
-    wifiSoftApClientGotIp = false; /* reset event flag */
+  }else{
+    resetMqttBrokerStates();
   }
   
   showFreeHeapOnChange(); /* monitor memory leaks */

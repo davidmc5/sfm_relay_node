@@ -105,8 +105,10 @@ bool unsavedSettingsFound(){
  * and also by testSettings()
  */
 void resetMqttBrokerStates(){
-  mqttBrokerState = mqttBrokerUpA = mqttBrokerUpB = 0;
-  wifiStatusChange = true; /////////// this could be removed if checked in main loop
+//  mqttBrokerState = mqttBrokerUpA = mqttBrokerUpB = 0;
+  mqttBrokerState = 0;
+  mqttBrokerUpA = false;
+  mqttBrokerUpB = false;
 }
 
 /*
@@ -183,7 +185,7 @@ void manageMqtt(){
         checkMqttBrokers();       
         if (mqttBrokerUpA || mqttBrokerUpB){ //at least one broker is up
           mqttNextState(1);
-         sprint(1, "........................",);
+         sprint(1, "MQTT STATE ........................",);
           mqttBrokerOnline(); /* publish online status */
           sendRestart(); /* Publish node's restart code (crash message) only once after boot */ 
          sprint(1, "........................",);

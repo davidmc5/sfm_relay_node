@@ -59,7 +59,7 @@ struct cfgSettings_s{
 
 /////////// CHANGE TO Settings_s, settingsRam and settingsFlash
 ///////////////////////////////////////////////////
-struct cfgSettings_s cfgSettings, cfgSettingsTemp; 
+struct cfgSettings_s cfgSettings={0}, cfgSettingsTemp={0}; //initialize all struct members to zero
 
 /* set pointers for both flash and ram structs */
 struct cfgSettings_s   * const settingsRamPtr = &cfgSettings; // set the struct pointer to the address of the Ram struct
