@@ -46,8 +46,7 @@ void testSettings(){
   if (unsavedSettingsFound()){
     if(wifiConfigChanges){
       sprint(1, "WIFI Changes Made. Testing WiFi Connectivity...",);
-//      connect = true; /* force wifi to reconnect using current settings on ram */ 
-      wifiUp = false; /* force wifi to reconnect using current settings on ram */ 
+      retryWifiFlag = true; /* test new AP settings immediately */
     }
     if (mqttConfigChanges){
       sprint(1, "MQTT Changes made. Testing mqtt Connectivity...",);
@@ -213,7 +212,7 @@ void manageMqtt(){
           if (mqttErrorCounter > 2){
             loadMqttBrokerDefaults();
             internetUp = false; /* assume internet is down */
-            wifiUp = false; /* force reconnecting to wifi */                    
+            retryWifiFlag = true; /* test new AP settings immediately */                   
             mqttErrorCounter = 0; 
           }
           sprint(1, "MQTT ERROR COUNTER >>>>>>>>>>>>> ", mqttErrorCounter);        

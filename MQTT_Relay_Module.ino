@@ -1,7 +1,10 @@
 
-#define FW_VERSION "1.38"
+#define FW_VERSION "1.40"
 /*
  *  COMMIT NOTES
+ *  
+ *  Remove wifiUp flag - Use system flag WiFi.isConnected()
+ *  Cleaned wifi event callbacks
  *  
  *  Replaced apSSIDa/apPSWDa with apSSIDlast/apPSWDlast as the new functional aps
  *  The other two APs A/B can only be changed via mqtt
@@ -24,6 +27,16 @@
  *  IF A WORKING AP IS FOUND, STORE IN LAST AND SET LED ON
  *  IF NOT, ENABLE SOFTAP AND SET SLOW BLINK (NO VALID AP FOUND) AND WAIT 1 MINUTE FOR CLIENT CONNECTION
  *  IF A NEW AP IS CONFIGURED AND WORKS, STORE TO LAST.
+ *  
+ *  
+ *  ON BOOT, FLASH LED AND ATTEMPT FIRST TO CONNECT TO STORED APs, WITH SOFTAP DISSABLED
+ *  IF UNABLE TO CONNECT, ENABLE SOFTAP AND FAST-BLINK THE LED
+ *  AFTER ONE MINUTE, IF NO SOFTWAP CLIENTS CONNECTED, DISABLE SOFTAP AND SLOW-BLINK THE LED
+ *  
+ *  WHEN THE NODE CONNECTS TO MQTT BROKER, FORCE DISCONNECT ALL CLIENTS AND DISABLE SOFTAP
+ *  FURTHER CONFIGURATION WILL BE DONE VIA MQTT
+ *  
+ *  
  */
 
 
@@ -66,8 +79,11 @@
  * https://buildmedia.readthedocs.org/media/pdf/arduino-esp8266/docs_to_readthedocs/arduino-esp8266.pdf
  * https://arduino-esp8266.readthedocs.io/en/latest/libraries.html
  * 
+ * WIFI connectivity to an access point
+ * https://arduino-esp8266.readthedocs.io/en/latest/esp8266wifi/station-class.html
+ * https://arduino-esp8266.readthedocs.io/en/latest/esp8266wifi/generic-examples.html
  * 
- * *** ESP8266 Webserver: Accessing the body of a HTTP request
+ * Webserver: Accessing the body of a HTTP request
  * https://techtutorialsx.com/2017/03/26/esp8266-webserver-accessing-the-body-of-a-http-request/
  * 
  * To control the soft Access Point, including disconnect, see this tutorial:
@@ -75,9 +91,6 @@
  * 
  * Create A Simple ESP8266 Web Server In Arduino IDE
  * https://lastminuteengineers.com/creating-esp8266-web-server-arduino-ide/
- * 
- * Check for WIFI connectivity to the access point in the background
- * https://arduino-esp8266.readthedocs.io/en/latest/esp8266wifi/generic-examples.html
  * 
  * Blink LED on a background timer
  * https://circuits4you.com/2018/01/02/esp8266-timer-ticker-example/
@@ -295,9 +308,15 @@ void softAPoff(){
 }
 
 /* Timer to retry wifi connectivity - calls retryWifi() */
-Ticker retryWifiTimer; 
+Ticker retryWifiTimer;
 bool retryWifiFlag = true;
 void retryWifi(){
+  /*
+   * This function is called by the retryWifiTimer to set the retryWifiFlag
+   * When retryWifiFlag is set, the main loop() will disconnect current station-mode wifi
+   * and attempt to connect to the given AP.
+   * It will also restart the retryWifiTimer.
+   */
   retryWifiFlag = true;
   retryWifiTimer.detach();
 }
@@ -310,35 +329,45 @@ void retryWifi(){
  * https://github.com/esp8266/Arduino/blob/master/libraries/ESP8266WiFi/src/ESP8266WiFiGeneric.cpp
  */
 
-/* triggers when device (in station mode) connects to AP */
+/*
+ * triggers when station mode connects to an AP but before wifi is fully up (before station node gets an IP)
+ * this event is only used for diagnostics
+ */
 WiFiEventHandler stationConnectedHandler;
 void onStationConnected(const WiFiEventStationModeConnected event){
   wifiStationConnected = true;
   wifiStatusChange = true;
+  //sprint(1, "-------------> Event StationModeConnected - WIFI IS STILL DOWN: ", WiFi.isConnected());
 }
 
 /* triggers when the device (in station mode) disconnects from the AP */
 WiFiEventHandler stationDisconnectedtHandler;
 void onStationDisconnected(const WiFiEventStationModeDisconnected event){
-  if (!wifiReconnectAttempt){
+  if (!wifiReconnectAttempt){ /* Only flag unexpected events, not when we are forcing a disconnect to connect to a differnt AP */
     wifiStationDisconnected = true;
     wifiStatusChange = true;
-    wifiUp = false;
-    internetUp = false;
   }
   wifiReconnectAttempt = false;
+  internetUp = false;
 }
 
-/* triggers when the NODE/STATION gets an IP from the Access Point */
+
+/*
+ * triggers when the NODE/STATION gets an IP from the Access Point
+ * This event sets the systeme flag WiFi.isConnected()== true
+ * This event is only used for diagnostics
+ */
 WiFiEventHandler stationGotIpHandler;
 void onStationGotIp(const WiFiEventStationModeGotIP event){
   wifiStationGotIp = true;
   wifiStatusChange = true;  
-  wifiUp = true;
-  retryWifiTimer.detach(); /* Stop retrying connecting to wifi - Connected with an IP! */ 
-  
-  //// FOR TESTING! REMOVE THIS BLOCKING COMMAND FROM CALLBACK
-  sprint(1, "STATION IP: ", event.ip);
+  if(WiFi.isConnected()){ /* This should always be true! With an IP assigned, wifi whould be up */
+    retryWifiTimer.detach(); /* Stop retrying connecting to wifi - Connected with an IP! */ 
+    retryWifiFlag = false; /* prevent disconneting and retrying station wifi! */
+  }
+  /* Below print commands are for diagnostics only - Do not leave blocking commands on a callback! */
+//  sprint(1, "STATION IP: ", event.ip); 
+//  sprint(1, "-------------> Event StationModeGotIP - WIFI IS UP: ", WiFi.isConnected());
 }
 
 /* triggers when a device connects to the softAP. Event has MAC of the device */
@@ -520,36 +549,38 @@ void monitorEvents(){
       sprint(2, "EVENT: SOFTAP CLIENT DISCONNECTED. MAC: ", clientMac);
       showSoftApClients();
     }
-    if (wifiSoftApClientGotIp){
+    if (wifiSoftApClientGotIp){ 
       sprint(2, "EVENT: SOFTAP CLIENT GOT IP",);
       wifiSoftApClientGotIp = false; /* reset event flag */
       showSoftApClients(); /* display the clients connected to the softAP if an IP assignment event got triggered */
     }
-    if(wifiStationConnected){
+    if(wifiStationConnected){ /* this event is only used for diagnostics */
       wifiStationConnected = false;
-      sprint(2, "EVENT: WIFI STATION CONNECTED",);
+      sprint(2, "EVENT: WIFI STATION-MODE CONNECTED (No IP assigned yet!)",);
+    }
+    if (wifiStationGotIp){ /* this event is only used for diagnostics */
+      wifiStationGotIp = false;
+      sprint(2, "EVENT: WIFI STATION-MODE GOT IP: ", WiFi.localIP());
     }
     if(wifiStationDisconnected){
       wifiStationDisconnected = false;
       strcpy(wanIp, "0.0.0.0"); /* Clear WAN IP */
       sprint(0, "EVENT: WIFI STATION DISCONNECTED!",);
-    }
-    if (wifiStationGotIp){
-      wifiStationGotIp = false;
-      sprint(2, "EVENT: WIFI STATION GOT IP: ", WiFi.localIP());
-    }    
+    }   
     sprint(2, "NODE STATUS ---------------------", );
-    if(wifiUp){
-      sprint(2, "STATION WIFI UP - LOCAL IP: ", WiFi.localIP());
+    if(WiFi.isConnected()){
+      sprint(2, "WIFI UP - LOCAL IP: ", WiFi.localIP());
     }else{
-      sprint(0, "STATION WIFI DOWN!",);
+      sprint(0, "WIFI DOWN!",);
     }    
     if(internetUp){
-      sprint(2, "INTERNET UP",);
+      sprint(2, "INTERNET UP - PUBLIC IP: ", wanIp);
     }else{
       sprint(0, "INTERNET DOWN",);
     }
     if(mqttBrokerUpA || mqttBrokerUpB){ /* at least one broker is up */
+//      retryWifiTimer.detach(); /* stop retrying station-mode connection to an AP */
+//      retryWifiFlag = false;
       ledOn();
       sprint(2, "MQTT UP: ", mqttBrokerUpA + mqttBrokerUpB);
     }else{
@@ -741,15 +772,16 @@ void loop() {
      * on connect, set count to zero
      */    
     sprint(2, "CONNECTING TO WIFI SSID: ", cfgSettings.apSSIDlast);
-    wifiReconnectAttempt = true;
+    
+    wifiReconnectAttempt = true; /* Ignore the known disconnect event that we are causing */    
     WiFi.disconnect(); /* Clear previous connection - will generate a disconnect event */ 
     WiFi.begin(cfgSettings.apSSIDlast, cfgSettings.apPSWDlast); /* connect to the last ssid/pswd in ram */
-   
+
     /* start wifi retry timer - calls retryWifi() on timeout*/
     if (WiFi.softAPgetStationNum() > 0){ /* Clients connected */
       retryWifiTimer.attach(30, retryWifi); /* wait longer to retry when a client is connected to prioritize configuration tasks over wifi reconnects */
     }else{ /* no clients connected. Retry more often */
-      retryWifiTimer.attach(5, retryWifi); 
+      retryWifiTimer.attach(10, retryWifi); 
     }
   }
   /* service dns requests from softAP clients */
@@ -759,14 +791,11 @@ void loop() {
   /* service http requests */     
   httpServer.handleClient(); /* service http requests from softAP and wlan clients */
   
-  if (wifiUp && !internetUp){
-    checkInternet();
-  }
-  
   if (internetUp){
     manageMqtt();
   }else{
     resetMqttBrokerStates();
+    checkInternet();
   }
   
   showFreeHeapOnChange(); /* monitor memory leaks */

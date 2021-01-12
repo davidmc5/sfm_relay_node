@@ -162,5 +162,4 @@ bool unsavedChanges = false; /* If true, ram and flash settings are different - 
 bool wifiConfigChanges = false; /* save request if wifi settings are different between ram and flash - set by mqtt/unsavedSettingsFound() and http/handleWifiSave() */
 bool mqttConfigChanges = false; /* save request if mqtt settings are different between ram and flash */
 bool saveAllRequest = false; /* flag to indicate a save request has been made */
-bool wifiUp = false;
 bool internetUp = false;

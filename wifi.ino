@@ -134,8 +134,6 @@ void showSoftApClients(){
     station_list = STAILQ_NEXT(station_list, next);
   }
   wifi_softap_free_station_info(); /* free memory */
-//  wifiSoftApClientGotIp = false; /* reset event flag */
-//  Serial.println();
 }
 
 
@@ -146,15 +144,11 @@ void showSoftApClients(){
 //   * Resets the timer to start another wifi reconnect cycle
 //   */
 //  sprint(1, "---------------------------------------",);
-//  sprint(1, "wifiUp Flag: ", wifiUp); 
 //  sprint(1, "internetUp Flag: ", internetUp); 
 //  sprint(1, "---------------------------------------",);
 //  prevWifiStationState = WL_IDLE_STATUS; /* reset current wifi state flag to force checking internet access by fetching the public IP*/  
 //  resetMqttBrokerStates(); /* Since we are re/connecting to wifi, set mqtt brokers status offline */ 
 //  sprint(2, "Connecting to WiFi AP: ", cfgSettings.apSSIDlast);
-//  wifiUp = WiFi.status() == WL_CONNECTED; /* set wifi state flag */ 
-//  if(wifiUp){
-//    sprint(2, "WIFI IS UP NOW!",);
 //  }
 // } 
 
@@ -171,12 +165,19 @@ void showSoftApClients(){
 
  void checkInternet(){
   /*
-   * Get the public IP address
+   * Get the public IP address if connected to wifi
    * If it succeeds, set the internetUp flag
-   */
+   */   
+   if(!WiFi.isConnected()){
+    internetUp = false;
+    return;    
+   }
   HTTPClient http;
   //////////////////////////////////////////////////////////
   /////// >>> MAKE EACH SERVICE SITE CONFIGURABLE VIA MQTT
+  ///////// TEST TWO OR MORE SEPARATE SITES
+  ///////// REPORT QUESTIONABLE INTERNET ACCESS IF ONE OF THE SITES FAILED
+  ////////// BUT IF MQTT BROKER IS RESPONDING DO NOT RETRY WIFI ACCESS POINT
   //////////////////////////////////////////////////////////
   http.begin("http://api.ipify.org/?format=text");
   int httpCode = http.GET(); /* Send http GET request to API */
@@ -191,12 +192,12 @@ void showSoftApClients(){
     //another way:
     ///// change sprintf to the more secure snprintf (will need to add the sizeof the string plus one for the null terminator
     sprintf(wanIp, "%s", http.getString().c_str());
-    sprint(2,"EVENT: INTERNET IS UP - Public IP: ", wanIp);
+//    sprint(2,"EVENT: INTERNET IS UP - Public IP: ", wanIp);
     internetUp = true;
     wifiStatusChange = true;
   }else{
     /* No internet access - reset flags */
-    sprint(0, "WiFI is Up but no Internet",); 
+//    sprint(0, "WiFI is Up but no Internet",); 
     internetUp = false;
   }
   http.end();   //Close connection

@@ -151,9 +151,6 @@ void handleWifi() {
    * root configuration page
    */
   sprint(2, "SENDING CONFIGURATION PAGE TO CLIENT AT: ", httpServer.client().remoteIP());
-//  retryWifiTimer.detach();
-//  retryWifiTimer.attach(30, retryWifi); /* reset wifi retry timer to allow time to bring up the captive portal on the softap client */
-
   /*
    * The Location response header indicates the URL to redirect a page to. 
    * It is only meaningful when served with a 3xx (redirection) or 201 (POST/created) status response.
@@ -179,14 +176,14 @@ void handleWifiSave() {
  * After a timeout the waiting page will redirect to root config page again
  * 
  * This function stores in ram (only) the ssid (argument = "n") and pswd (argument = "p") entered in the captive portal 
- * resets the wifiUp flag (to false) so the wifi/manageWifi fuction attempts to connect to verify credentials are valid
+ * sets retryWifiFlag so the wifi/manageWifi function attempts to connect to verify credentials are valid
  * https://techtutorialsx.com/2016/10/22/esp8266-webserver-getting-query-parameters/
  */
   /* save the given ssid ("n") to ram struct field */
   httpServer.arg("n").toCharArray(cfgSettings.apSSIDlast, sizeof(cfgSettings.apSSIDlast) - 1);
   /* save the given wifi password ("p") to ram struct field */
   httpServer.arg("p").toCharArray(cfgSettings.apPSWDlast, sizeof(cfgSettings.apPSWDlast) - 1);
-  sprint(2, "WIFI SAVE REQUEST: ", cfgSettings.apSSIDlast);
+  sprint(2, "WIFI CONNECT REQUEST TO: ", cfgSettings.apSSIDlast);
   sprint(2, "REQUESTING CLIENT: ", httpServer.client().remoteIP());
   /*
    * The Location response header indicates the URL to redirect a page to. 
@@ -200,7 +197,6 @@ void handleWifiSave() {
   
   httpServer.send(302, "text/html", "");    // Empty content inhibits Content-length header so we have to close the socket ourselves.
   httpServer.client().stop(); // Stop is needed because we sent no content length
-  wifiUp = false; /* reset the flag to force a connect to the given access point */
   /* ram and flash settings are now different. Set the flags for unsaved changes */
   unsavedChanges = true; /* Flash and ram settings are now different. This flag is reset by eeprom/saveAll() once settings are verified */
   wifiConfigChanges = true; /* save settings request if wifi settings are verified to be valid */
