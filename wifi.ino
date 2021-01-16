@@ -29,11 +29,29 @@ void startSoftAP(){
   sprint(2, "Node's MAC Address: ", nodeId);
   /* Remove the password parameter (or set it to null to join the AP with only the ssid */
   WiFi.softAPConfig(apIP, apIP, netMsk);
-  /* softAP + Station mode FAQ: https://bbs.espressif.com/viewtopic.php?f=10&t=324 */
-  WiFi.mode(WIFI_AP_STA); /* set wifi for both client (station) and softAP - It was working without this, so it might be the default */
+
+//////////////////////////////////////////////////////////////
+  // MOVE THIS TO THE SETUP SECTION
+  /*
+   * softAP + Station mode FAQ: https://bbs.espressif.com/viewtopic.php?f=10&t=324 
+   * in softAP + station mode, ESP8266 softAP will adjust its channel configuration to be as same as ESP8266 station.
+   * WiFi.mode(m): set mode to WIFI_AP, WIFI_STA, WIFI_AP_STA or WIFI_OFF
+   * https://arduino-esp8266.readthedocs.io/en/latest/esp8266wifi/generic-class.html#mode
+   * https://stackoverflow.com/questions/59096373/differents-between-wifi-mode-and-wifi-set-opmode
+   * 0x01: Station mode
+   * 0x02: SoftAP mode
+   * 0x03: Station + SoftAP
+   */
+  WiFi.mode(WIFI_AP_STA); /* set wifi for both client (station) and softAP - The default mode is SoftAP mode */
+  // THIS IS ONLY FOR STATION MODE CLIENT ACCESS POINT!! ///////////////
   /* https://arduino-esp8266.readthedocs.io/en/latest/esp8266wifi/station-class.html#setautoreconnect */
   WiFi.setAutoConnect(false); /* prevents the station client trying to reconnect to last AP on power on/boot */
   WiFi.setAutoReconnect(false); /* prevents reconnecting to last AP if conection is lost */
+    //////////////////////////////////////////////
+
+//The maximum number of stations that can simultaneously be connected to the soft-AP can be set from 0 to 8, but defaults to 4.
+//defaults: WiFi.softAP(ssid, password, channel=1, hidden=false, max_connection=4)
+//WiFi.softAP(softAP_ssid, softAP_password, 6, false, 4);
   if (WiFi.softAP(softAP_ssid, softAP_password) ){
     sprint(1, "SOFTAP ENABLED. SSID: ", softAP_ssid);
     sprint(2, "SoftAP IP Address: ", WiFi.softAPIP());
@@ -72,7 +90,8 @@ void startHttpServer(){
   httpServer.on("/configWait", handleConfigWait);
   httpServer.onNotFound(handleWifi);
   httpServer.begin(); // Web server start
-  //// CHECK HERE THAT THE WEB SERVER DID START WITHOUT ERROR CODE
+  ////////////
+  //// CHECK HERE THAT THE WEB SERVER DID NOT RETURN AN ERROR CODE
   sprint(2, "HTTP server started",);
   softApTimer.attach(60, softAPoff); /* Disable softAP after 60 seconds */
   softAPoffFlag = false;
@@ -165,42 +184,83 @@ void showSoftApClients(){
 
  void checkInternet(){
   /*
-   * Get the public IP address if connected to wifi
-   * If it succeeds, set the internetUp flag
+   * Get the public IP address (if connected to wifi)
+   * If it succeeds, set the internetUp and wifiStatusChange flags
    */   
    if(!WiFi.isConnected()){
     internetUp = false;
     return;    
    }
-  HTTPClient http;
-  //////////////////////////////////////////////////////////
-  /////// >>> MAKE EACH SERVICE SITE CONFIGURABLE VIA MQTT
-  ///////// TEST TWO OR MORE SEPARATE SITES
-  ///////// REPORT QUESTIONABLE INTERNET ACCESS IF ONE OF THE SITES FAILED
-  ////////// BUT IF MQTT BROKER IS RESPONDING DO NOT RETRY WIFI ACCESS POINT
-  //////////////////////////////////////////////////////////
-  http.begin("http://api.ipify.org/?format=text");
-  int httpCode = http.GET(); /* Send http GET request to API */
+   /*
+    * https://www.reddit.com/r/esp8266/comments/ewt483/confused_about_deprecated_httpclientbegin_calls
+    * https://community.platformio.org/t/bool-httpclient-begin-string-is-deprecated/16924/2 
+    * https://arduino-esp8266.readthedocs.io/en/latest/esp8266wifi/client-class.html
+    */
+   WiFiClient client; ////// do we need to close this one? change to HTTPClient httpClient;
+   //// TESTING: TO DECREASE RESPONSE TIME
+   client.setNoDelay(true); /* disable Nagle algorithm */
+
+   HTTPClient http;
+    //////////////////////////////////////////////////////////
+    /////// >>> MAKE EACH SERVICE SITE CONFIGURABLE VIA MQTT
+    ///////// TEST TWO OR MORE SEPARATE SITES
+    ///////// REPORT QUESTIONABLE INTERNET ACCESS IF ONE OF THE SITES FAILED
+    ////////// BUT IF MQTT BROKER IS RESPONDING DO NOT RETRY WIFI ACCESS POINT
+    //////////////////////////////////////////////////////////
+   
+   /*
+    * https://github.com/esp8266/Arduino/pull/4038
+    * https://github.com/espressif/arduino-esp32/issues/1433#issuecomment-473460315
+    * Setting a time of less than 5 seconds causes the http.GET() to exit in just 50 ms bypassing the timeout most of the time! Why?
+    * If if returns with a code > 0 it skips the timeout.
+    * If the code is < 0 and the timeout is > 6sec it will wait the time before http.GET() returns
+    */
+  http.setTimeout(3000);// 20K= 32s, 10K=20s, 5K=10s, 3K= 6s, 2K5= 5s (minimum time), 2K= 4s(sometimes) 1K= too small!
+  ///////////////////////////////////////////////////////////
+  
+  //http.begin("http://api.ipify.org/?format=text");
+  http.begin(client, "http://api.ipify.org/?format=text");
+  // for testing:
+  int prevTime = millis(); 
+  sprint(1, "test", );
+  ///////////////////////////
   /*
-   * if http.get return code is less than zero, asume internet down
+   * https://techtutorialsx.com/2016/07/17/esp8266-http-get-requests/
+   * https://techtutorialsx.com/2016/07/21/esp8266-post-requests/
+   */
+  int httpCode = http.GET(); /* Send http GET request to API */
+  sprint(1, "GET time: ", millis()- prevTime);
+  sprint(1,"HTTP RETURN CODE: ", httpCode);
+  /*
+   * if the value is greater than 0, it corresponds to a standard HTTP code. 
+   * If this value is less than 0, it corresponds to a ESP8266 error, related with the connection.
    * https://github.com/esp8266/Arduino/issues/5137#issue-360559415
    */
-  if (httpCode > 0){ /* internet is up */
-    /* convert const String (http.getString)to const char* (wanIp) */
-    //////////////////////////////////////////////////////////////////////////////////////
-    //http.getString().toCharArray(wanIp, http.getString().length()+1);
-    //another way:
+  if (httpCode == 200){ /* Got a valid response - Internet is up */
+    /*
+     * Return codes:
+     * https://github.com/esp8266/Arduino/blob/master/libraries/ESP8266HTTPClient/src/ESP8266HTTPClient.h#L45
+     * 
+     * convert const String (http.getString)to const char* (wanIp)
+     * option 1: http.getString().toCharArray(wanIp, http.getString().length()+1);
+     * option 2: sprintf(wanIp, "%s", http.getString().c_str());
+     */
     ///// change sprintf to the more secure snprintf (will need to add the sizeof the string plus one for the null terminator
     sprintf(wanIp, "%s", http.getString().c_str());
-//    sprint(2,"EVENT: INTERNET IS UP - Public IP: ", wanIp);
     internetUp = true;
     wifiStatusChange = true;
   }else{
-    /* No internet access - reset flags */
+    /* WiFI is up but either with no internet access, or test site is not sending a valid response */
+    //check here:
+    // if <0, Local Connectivity problem
+    // if >0, http error
+    ///////////////////////////////////
+    Serial.print("{*}");
 //    sprint(0, "WiFI is Up but no Internet",); 
     internetUp = false;
   }
   http.end();   //Close connection
+  client.stop();
  }
 
 
@@ -208,7 +268,7 @@ void showSoftApClients(){
 //NEEDS TO BE CHANGED: IT ONLY CONNECTS TO ONE AP
 //NEEDS TO CHECK MULTIPLE APs, WITH THE SAME or different SSID and/or passwords
 // AND fallback to FACTORY TEST SSID 
-//Do we want to make the factory ssid match the node mac as password? That way it is unique!
+// make the factory ssid match the node mac as password? That way it is unique!
 
 // Load values from flash into struct, or null for none
 //build functions to:

@@ -1,24 +1,10 @@
 
-#define FW_VERSION "1.40"
+#define FW_VERSION "1.41"
 /*
  *  COMMIT NOTES
  *  
- *  Remove wifiUp flag - Use system flag WiFi.isConnected()
- *  Cleaned wifi event callbacks
+ *  Add delay after WiFi.disconnect(). Without that, ometimes it would fail to reconnect to the AP.
  *  
- *  Replaced apSSIDa/apPSWDa with apSSIDlast/apPSWDlast as the new functional aps
- *  The other two APs A/B can only be changed via mqtt
- *  The fact AP is hardcoded in firmware and used for intial factory testing
- *  
- *  added to settings struct: 
- *  apSSIDlast --> this is the one being used
- *  apPSWDlast
- *  apSSIDa
- *  apPSWDa
- *  apSSIDb
- *  apPSWDb
- *  
- *  There is also a hardcoded AP (apSSIDfact / apPSWDfact)
  *  
  *  TO DO NEXT:
  *  
@@ -72,37 +58,44 @@
 /*
  * REFERENCES
  * 
- * The base of this code is from:
  * Arduino App > File > Examples > Examples for ESP8266> DNSServer > CaptivePortalAdvanced
  * 
+ * espressif SDK
+ * https://www.espressif.com/sites/default/files/documentation/2c-esp8266_non_os_sdk_api_reference_en.pdf
+ * 
+ * ESP8266/Arduino Releases: 
+  * https://github.com/esp8266/Arduino/releases
+ * 
  * ESP8266 Arduino Core Documentation:
- * https://buildmedia.readthedocs.org/media/pdf/arduino-esp8266/docs_to_readthedocs/arduino-esp8266.pdf
- * https://arduino-esp8266.readthedocs.io/en/latest/libraries.html
+   * https://buildmedia.readthedocs.org/media/pdf/arduino-esp8266/docs_to_readthedocs/arduino-esp8266.pdf
+   * https://arduino-esp8266.readthedocs.io/en/latest/libraries.html
+   * https://github.com/esp8266/Arduino/blob/master/tools/sdk/include/c_types.h
  * 
  * WIFI connectivity to an access point
- * https://arduino-esp8266.readthedocs.io/en/latest/esp8266wifi/station-class.html
- * https://arduino-esp8266.readthedocs.io/en/latest/esp8266wifi/generic-examples.html
+ * https://arduino-esp8266.readthedocs.io/en/latest/esp8266wifi/readme.html
+   * https://arduino-esp8266.readthedocs.io/en/latest/esp8266wifi/station-class.html
+   * https://arduino-esp8266.readthedocs.io/en/latest/esp8266wifi/generic-examples.html
  * 
  * Webserver: Accessing the body of a HTTP request
- * https://techtutorialsx.com/2017/03/26/esp8266-webserver-accessing-the-body-of-a-http-request/
+  * https://techtutorialsx.com/2017/03/26/esp8266-webserver-accessing-the-body-of-a-http-request/
  * 
  * To control the soft Access Point, including disconnect, see this tutorial:
- * https://arduino-esp8266.readthedocs.io/en/latest/esp8266wifi/soft-access-point-class.html
+  * https://arduino-esp8266.readthedocs.io/en/latest/esp8266wifi/soft-access-point-class.html
  * 
  * Create A Simple ESP8266 Web Server In Arduino IDE
- * https://lastminuteengineers.com/creating-esp8266-web-server-arduino-ide/
+   * https://lastminuteengineers.com/creating-esp8266-web-server-arduino-ide/
  * 
  * Blink LED on a background timer
- * https://circuits4you.com/2018/01/02/esp8266-timer-ticker-example/
+   * https://circuits4you.com/2018/01/02/esp8266-timer-ticker-example/
  * 
  * Set up a background timer to disconnect AP 30 seconds after power up if no clients are connected
- * https://arduino-esp8266.readthedocs.io/en/latest/esp8266wifi/soft-access-point-class.html#softapdisconnect
+  * https://arduino-esp8266.readthedocs.io/en/latest/esp8266wifi/soft-access-point-class.html#softapdisconnect
  * 
  * Set up MQTT client
- * https://techtutorialsx.com/2017/04/09/esp8266-connecting-to-mqtt-broker/
+   * https://techtutorialsx.com/2017/04/09/esp8266-connecting-to-mqtt-broker/
  * 
  * Ticker with arguments
- * https://github.com/esp8266/Arduino/blob/master/libraries/Ticker/examples/TickerParameter/TickerParameter.ino
+   * https://github.com/esp8266/Arduino/blob/master/libraries/Ticker/examples/TickerParameter/TickerParameter.ino
  */
 
 
@@ -110,23 +103,25 @@
 // esp8266 Arduino Core Documentation: https://arduino-esp8266.readthedocs.io/en/latest/
 //https://github.com/esp8266/Arduino/blob/master/cores/esp8266/core_esp8266_features.h
 
-#include <ESP8266WiFi.h> //https://arduino-esp8266.readthedocs.io/en/latest/esp8266wifi/readme.html
-#include <WiFiClient.h>
+#include <ESP8266WiFi.h> /* raw access to wifi independent of protocol - https://arduino-esp8266.readthedocs.io/en/latest/esp8266wifi/readme.html */
+#include <WiFiClient.h> /* to send and receive data to a server but you have to format the data yourself e.g. message headers and parsing the response */
+#include <ESP8266HTTPClient.h> /* to communicate with a http web server and does all the formatting and parsing needed */
+
 #include <ESP8266WebServer.h> //https://github.com/esp8266/Arduino/tree/master/libraries/ESP8266WebServer
 #include <DNSServer.h> //https://github.com/esp8266/Arduino/tree/master/libraries/DNSServer
+#include <ESP8266httpUpdate.h> //fota
+
 #include <EEPROM.h>
 #include <Ticker.h> //https://www.arduino.cc/reference/en/libraries/ticker/
 #include <PubSubClient.h>
-#include <ESP8266HTTPClient.h>
 #include <Wire.h>
-#include <ESP8266httpUpdate.h> //fota
 #include <stdio.h> //sprintf()
 
 #include "utils.h"
 #include "mqtt_brokers.h"
 #include "settings.h"
 
-// not sure if we need this. It might be included with some other .h file
+// appears to be included with some other .h file
 //extern "C" {
 //  #include<user_interface.h>
 //}
@@ -560,7 +555,7 @@ void monitorEvents(){
     }
     if (wifiStationGotIp){ /* this event is only used for diagnostics */
       wifiStationGotIp = false;
-      sprint(2, "EVENT: WIFI STATION-MODE GOT IP: ", WiFi.localIP());
+      sprint(2, "EVENT: WIFI STATION-MODE CONNECTED - IP: ", WiFi.localIP());
     }
     if(wifiStationDisconnected){
       wifiStationDisconnected = false;
@@ -579,8 +574,6 @@ void monitorEvents(){
       sprint(0, "INTERNET DOWN",);
     }
     if(mqttBrokerUpA || mqttBrokerUpB){ /* at least one broker is up */
-//      retryWifiTimer.detach(); /* stop retrying station-mode connection to an AP */
-//      retryWifiFlag = false;
       ledOn();
       sprint(2, "MQTT UP: ", mqttBrokerUpA + mqttBrokerUpB);
     }else{
@@ -753,8 +746,9 @@ void setup() {
 /***********************************************************/
 
 void loop() {
+//  sprint(1, "LOOP PASS",);
 
-  monitorEvents(); /* Check if any event flags have been set */
+  monitorEvents(); /* Check if any event flags have been set if wifiStatusChange */
  
   if(retryWifiFlag){
     retryWifiFlag = false; /* don't check again until after new retry time is up*/
@@ -770,11 +764,23 @@ void loop() {
      * Increase count and reset to 0 if 3 or more
      * If contents of selected ssid are null, get next one
      * on connect, set count to zero
-     */    
+     */
+
+     //////    /// PUT THIS IN A SEPARATE FUNCTION! 
+         
     sprint(2, "CONNECTING TO WIFI SSID: ", cfgSettings.apSSIDlast);
     
-    wifiReconnectAttempt = true; /* Ignore the known disconnect event that we are causing */    
-    WiFi.disconnect(); /* Clear previous connection - will generate a disconnect event */ 
+    wifiReconnectAttempt = true; /* Ignore the known disconnect event that we are causing */  
+    // test
+    sprint(1, "-----------------> WIFI MODE before: ", WiFi.getMode());  
+//    WiFi.disconnect(); /* Clear previous connection - will generate a disconnect event */
+    WiFi.disconnect(true); /* Clear previous connection - will generate a disconnect event */
+/////////////////////////////
+    delay(500); /* without some delay between disconnect and begin, it fails occasionally to connect */
+    WiFi.mode(WIFI_AP_STA); /* set wifi for both client (station) and softAP - It was working without this, so it might be the default */
+    WiFi.setAutoConnect(false); /* prevents the station client trying to reconnect to last AP on power on/boot */
+    WiFi.setAutoReconnect(false); /* prevents reconnecting to last AP if conection is lost */
+///////////////////////////////
     WiFi.begin(cfgSettings.apSSIDlast, cfgSettings.apPSWDlast); /* connect to the last ssid/pswd in ram */
 
     /* start wifi retry timer - calls retryWifi() on timeout*/
@@ -786,11 +792,14 @@ void loop() {
   }
   /* service dns requests from softAP clients */
   if (!softAPoffFlag){ //////////////// CONVERT THIS TO SOFTAPUP FLAG
-      dnsServer.processNextRequest();    
+      dnsServer.processNextRequest();
+      //////
+      //If the ESP8266‘s station interface has been scanning or trying to connect to a target router, the ESP8266 softAP-end connection may break.
+      //if not connected to an AP, set mode to softAP ONLY, so the channel does not change while user is configuring wifi.
+      httpServer.handleClient(); /* service http requests ONLY from softAP */   
   }
-  /* service http requests */     
-  httpServer.handleClient(); /* service http requests from softAP and wlan clients */
-  
+//  httpServer.handleClient(); /* service http requests from softAP AND wlan clients */
+
   if (internetUp){
     manageMqtt();
   }else{

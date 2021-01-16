@@ -104,7 +104,6 @@ bool unsavedSettingsFound(){
  * and also by testSettings()
  */
 void resetMqttBrokerStates(){
-//  mqttBrokerState = mqttBrokerUpA = mqttBrokerUpB = 0;
   mqttBrokerState = 0;
   mqttBrokerUpA = false;
   mqttBrokerUpB = false;
@@ -159,7 +158,8 @@ void loadMqttBrokerDefaults(){
  */
 void manageMqtt(){
   /* check mqtt conection status only if connected to wifi */
-  if (WiFi.status() == WL_CONNECTED && internetUp){
+//  if (WiFi.status() == WL_CONNECTED && internetUp){
+  if (internetUp){
     /* service mqtt requests */
     mqttClientA.loop();
     mqttClientB.loop();
@@ -246,7 +246,8 @@ void manageMqtt(){
         mqttErrorCounter = 0;
         break;  
     }/* end of broker state machine */
-  } 
+  }
+  /* internet is down - just exit */ 
 } /* end of manageMqtt() */
 
 
@@ -363,6 +364,7 @@ void checkMqttBrokers(){
   ///////////////////////////
   if(!mqttBrokerUpA && !mqttBrokerUpB){
     internetUp = false; /* Both brokers down: assume internet failure */
+    ////set retryflag ?
   }
   ///////////////////////////
 } /* end mqtt brokers check */

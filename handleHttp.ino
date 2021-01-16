@@ -164,6 +164,7 @@ void handleWifi() {
   String Page = configPage();  
 //  httpServer.send(302, "text/html", Page);
   httpServer.send(200, "text/html", Page); 
+  //https://forum.arduino.cc/index.php?topic=649979.0
   httpServer.client().stop(); 
   return;
 }
