@@ -3,7 +3,7 @@
 //https://arduino-esp8266.readthedocs.io/en/latest/libraries.html
 //ESP.restart() restarts the CPU.
 //ESP.getFreeHeap() returns the free heap size.
-//ESP.getHeapFragmentation() returns the fragmentation metric (0% is clean, more than ~50% is not harmless)
+//ESP.getHeapFragmentation() returns the fragmentation metric (0% is clean, less than ~50% is harmless)
 //ESP.getChipId() returns the ESP8266 chip ID as a 32-bit integer.
 //ESP.getFlashChipId() returns the flash chip ID as a 32-bit integer.
 //ESP.getFlashChipSize() returns the flash chip size, in bytes, as seen by the SDK (may be less than actual size).
@@ -22,6 +22,18 @@
  * FUTURE: 
  *  if unable to connect to neither pri AND bak after a few retries, try the two standby brokers (hardcoded)
  */
+
+void monitorMqtt(){
+  /* service mqtt messages */
+  if (internetUp){
+    manageMqtt();
+  }else{
+    resetMqttBrokerStates();
+    checkInternet();
+  } 
+}
+
+
 
 
 /*

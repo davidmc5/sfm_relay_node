@@ -61,7 +61,49 @@ void startSoftAP(){
     sprint(0, "SOFTAP INITIALIZATION FAILED!",);
   }
  }
- 
+
+
+void monitorWifiAP(){
+  if(retryWifiFlag){
+    retryWifiFlag = false; /* don't check again until after new retry time is up*/
+    /*
+     * getNextAp()
+     * 
+     * selects the next AP:
+     * get settings from flash (not RAM)
+     * 0: use current apSSIDlast
+     * 1: use A
+     * 2: use B
+     * 3: use factory 
+     * Increase count and reset to 0 if 3 or more
+     * If contents of selected ssid are null, get next one
+     * on connect, set count to zero
+     */
+
+     //////    /// PUT THIS IN A SEPARATE FUNCTION! 
+         
+    sprint(2, "CONNECTING TO WIFI SSID: ", cfgSettings.apSSIDlast);
+    
+    wifiReconnectAttempt = true; /* Ignore the known disconnect event that we are causing */  
+    WiFi.disconnect(true); /* Clear previous connection and stop station mode - will generate a disconnect event */
+    delay(500); /* without some delay between disconnect and begin, it fails occasionally to connect to an AP */
+    WiFi.mode(WIFI_AP_STA); /* set wifi for both client (station) and softAP - It was working without this, so it might be the default */
+    WiFi.setAutoConnect(false); /* prevents the station client trying to reconnect to last AP on power on/boot */
+    WiFi.setAutoReconnect(false); /* prevents reconnecting to last AP if conection is lost */
+///////////////////////////////
+    WiFi.begin(cfgSettings.apSSIDlast, cfgSettings.apPSWDlast); /* connect to the last ssid/pswd in ram */
+//    connectWifi();
+    /* start wifi retry timer - calls retryWifi() on timeout*/
+    if (WiFi.softAPgetStationNum() > 0){ /* Clients connected */
+      retryWifiTimer.attach(30, retryWifi); /* wait longer to retry when a client is connected to prioritize configuration tasks over wifi reconnects */
+    }else{ /* no clients connected. Retry more often */
+      retryWifiTimer.attach(10, retryWifi); 
+    }
+  }
+}
+
+
+
 void startDnsServer(){
   /*
    * Start dns server
@@ -75,6 +117,21 @@ void startDnsServer(){
   dnsServer.setErrorReplyCode(DNSReplyCode::NoError);
   dnsServer.start(DNS_PORT, "*", apIP);
 }
+
+void monitorDns(){
+  /* service dns requests from softAP clients */
+  if (!softAPoffFlag){ //////////////// CONVERT THIS TO SOFTAPUP FLAG
+      dnsServer.processNextRequest();
+      //////
+      //If the ESP8266‘s station interface has been scanning or trying to connect to a target router, the ESP8266 softAP-end connection may break.
+      //if not connected to an AP, set mode to softAP ONLY, so the channel does not change while user is configuring wifi.
+      httpServer.handleClient(); /* service http requests ONLY from softAP */   
+  } 
+  /// ELSE: DISABLE DNS SERVER!
+  ///////////////////////////////// 
+////  httpServer.handleClient(); /* service http requests from softAP AND wlan clients */
+}
+
 
 void startHttpServer(){
   /*

@@ -1,9 +1,9 @@
 
-#define FW_VERSION "1.41"
+#define FW_VERSION "1.42"
 /*
  *  COMMIT NOTES
  *  
- *  Add delay after WiFi.disconnect(). Without that, ometimes it would fail to reconnect to the AP.
+ *  Clean loop() calls
  *  
  *  
  *  TO DO NEXT:
@@ -746,67 +746,9 @@ void setup() {
 /***********************************************************/
 
 void loop() {
-//  sprint(1, "LOOP PASS",);
-
-  monitorEvents(); /* Check if any event flags have been set if wifiStatusChange */
- 
-  if(retryWifiFlag){
-    retryWifiFlag = false; /* don't check again until after new retry time is up*/
-    /*
-     * getNextAp()
-     * 
-     * selects the next AP:
-     * get settings from flash (not RAM)
-     * 0: use current apSSIDlast
-     * 1: use A
-     * 2: use B
-     * 3: use factory 
-     * Increase count and reset to 0 if 3 or more
-     * If contents of selected ssid are null, get next one
-     * on connect, set count to zero
-     */
-
-     //////    /// PUT THIS IN A SEPARATE FUNCTION! 
-         
-    sprint(2, "CONNECTING TO WIFI SSID: ", cfgSettings.apSSIDlast);
-    
-    wifiReconnectAttempt = true; /* Ignore the known disconnect event that we are causing */  
-    // test
-    sprint(1, "-----------------> WIFI MODE before: ", WiFi.getMode());  
-//    WiFi.disconnect(); /* Clear previous connection - will generate a disconnect event */
-    WiFi.disconnect(true); /* Clear previous connection - will generate a disconnect event */
-/////////////////////////////
-    delay(500); /* without some delay between disconnect and begin, it fails occasionally to connect */
-    WiFi.mode(WIFI_AP_STA); /* set wifi for both client (station) and softAP - It was working without this, so it might be the default */
-    WiFi.setAutoConnect(false); /* prevents the station client trying to reconnect to last AP on power on/boot */
-    WiFi.setAutoReconnect(false); /* prevents reconnecting to last AP if conection is lost */
-///////////////////////////////
-    WiFi.begin(cfgSettings.apSSIDlast, cfgSettings.apPSWDlast); /* connect to the last ssid/pswd in ram */
-
-    /* start wifi retry timer - calls retryWifi() on timeout*/
-    if (WiFi.softAPgetStationNum() > 0){ /* Clients connected */
-      retryWifiTimer.attach(30, retryWifi); /* wait longer to retry when a client is connected to prioritize configuration tasks over wifi reconnects */
-    }else{ /* no clients connected. Retry more often */
-      retryWifiTimer.attach(10, retryWifi); 
-    }
-  }
-  /* service dns requests from softAP clients */
-  if (!softAPoffFlag){ //////////////// CONVERT THIS TO SOFTAPUP FLAG
-      dnsServer.processNextRequest();
-      //////
-      //If the ESP8266‘s station interface has been scanning or trying to connect to a target router, the ESP8266 softAP-end connection may break.
-      //if not connected to an AP, set mode to softAP ONLY, so the channel does not change while user is configuring wifi.
-      httpServer.handleClient(); /* service http requests ONLY from softAP */   
-  }
-//  httpServer.handleClient(); /* service http requests from softAP AND wlan clients */
-
-  if (internetUp){
-    manageMqtt();
-  }else{
-    resetMqttBrokerStates();
-    checkInternet();
-  }
-  
-  showFreeHeapOnChange(); /* monitor memory leaks */
-    
+  monitorEvents(); /* Check if any event flags have been set - wifiStatusChange = true */
+  monitorWifiAP(); /* Connect to a wifi AP if not connected or it is a new config */
+  monitorDns(); /* service dns requests from softAP clients ---> ONLY WHILE SOFTAP IS ACTIVE */
+  monitorMqtt(); /* service mqtt messages */
+  showFreeHeapOnChange(); /* monitor memory leaks. Display message if exceeds a threshold */
 } /* END OF LOOP */
