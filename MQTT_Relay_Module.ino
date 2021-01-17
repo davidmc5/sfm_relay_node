@@ -1,9 +1,9 @@
 
-#define FW_VERSION "1.42"
+#define FW_VERSION "1.43"
 /*
  *  COMMIT NOTES
  *  
- *  Clean loop() calls
+ *  Clean startSoftAP() and loop() calls
  *  
  *  
  *  TO DO NEXT:
@@ -15,7 +15,7 @@
  *  IF A NEW AP IS CONFIGURED AND WORKS, STORE TO LAST.
  *  
  *  
- *  ON BOOT, FLASH LED AND ATTEMPT FIRST TO CONNECT TO STORED APs, WITH SOFTAP DISSABLED
+ *  ON BOOT, FLASH LED AND ATTEMPT FIRST TO CONNECT TO STORED APs, WITH SOFTAP DISABLED
  *  IF UNABLE TO CONNECT, ENABLE SOFTAP AND FAST-BLINK THE LED
  *  AFTER ONE MINUTE, IF NO SOFTWAP CLIENTS CONNECTED, DISABLE SOFTAP AND SLOW-BLINK THE LED
  *  
@@ -23,37 +23,35 @@
  *  FURTHER CONFIGURATION WILL BE DONE VIA MQTT
  *  
  *  
- */
-
-
-
-/* 
- * To compile and upload with Arduino IDE: 
- * set the board to "Generic ESP8266 Module"
- * CPU frequency 80 MH
- * Flash size 2MB / FS: 512KB / OTA: 768KB
- */
- 
-
-/*
- * To print messages to serial console:
- *    sprint(debug level, *msg1, *msg2);
- *    sprint(0, "ALERT Message",);
- *    sprint(1, "DEBUG Message",);
- *    sprint(2, "INFO message",);
+ * COMPILER - HARDWARE SETTINGS
+   * To compile and upload with Arduino IDE: 
+   * set the board to "Generic ESP8266 Module"
+   * CPU frequency 80 MH
+   * Flash size 2MB / FS: 512KB / OTA: 768KB
+ * 
+ * 
+ * 
+ * DEBUG SETTINGS
+   * To print messages to serial console:
+   *    sprint(debug level, *msg1, *msg2);
+   *    sprint(0, "ALERT Message",);
+   *    sprint(1, "DEBUG Message",);
+   *    sprint(2, "INFO message",);
+   *    
+   * DEBUG levels will print:
+   *    0 = ALERT
+   *    1 = ALERT & DEBUG
+   *    2 = ALERT & DEBUG & INFO
  *    
- * DEBUG levels will print:
- *    0 = ALERT
- *    1 = ALERT & DEBUG
- *    2 = ALERT & DEBUG & INFO
+ *    
+ * TODO:
+ * change DEBUG so it prints selectively. i.e., DEBUG 0,2 (print only alert and debug)
+ *    
 */
-///
-/// change DEBUG so it prints selectively DEBUG 0,2 (print only alert and debug)
-///
 #define DEBUG 2 //Comment this out to disable console messages on production.
 
-#define BAUD 9600 // Debug Serial baud rate.
-//#define BAUD 115200 // Debug Serial baud rate.
+#define BAUD 9600
+//#define BAUD 115200
 
 /*
  * REFERENCES
@@ -68,8 +66,11 @@
  * 
  * ESP8266 Arduino Core Documentation:
    * https://buildmedia.readthedocs.org/media/pdf/arduino-esp8266/docs_to_readthedocs/arduino-esp8266.pdf
+   * https://arduino-esp8266.readthedocs.io/en/latest/
    * https://arduino-esp8266.readthedocs.io/en/latest/libraries.html
+   * https://github.com/esp8266/Arduino/tree/master/libraries
    * https://github.com/esp8266/Arduino/blob/master/tools/sdk/include/c_types.h
+   * https://github.com/esp8266/Arduino/blob/master/cores/esp8266/core_esp8266_features.h
  * 
  * WIFI connectivity to an access point
  * https://arduino-esp8266.readthedocs.io/en/latest/esp8266wifi/readme.html
@@ -99,9 +100,6 @@
  */
 
 
-// esp8266 Arduino libraries: https://github.com/esp8266/Arduino/tree/master/libraries
-// esp8266 Arduino Core Documentation: https://arduino-esp8266.readthedocs.io/en/latest/
-//https://github.com/esp8266/Arduino/blob/master/cores/esp8266/core_esp8266_features.h
 
 #include <ESP8266WiFi.h> /* raw access to wifi independent of protocol - https://arduino-esp8266.readthedocs.io/en/latest/esp8266wifi/readme.html */
 #include <WiFiClient.h> /* to send and receive data to a server but you have to format the data yourself e.g. message headers and parsing the response */
@@ -121,7 +119,7 @@
 #include "mqtt_brokers.h"
 #include "settings.h"
 
-// appears to be included with some other .h file
+// This is already included in some other .h file:
 //extern "C" {
 //  #include<user_interface.h>
 //}
@@ -139,10 +137,6 @@ void publishSetting(char *setting="all");
 void publishError(char *setting="ERROR");
 
 
-///////////////////////////////////////////////////
-////// PUT ALL THESE DEFINITIONS ON config/header FILES 
-///////////////////////////////////////////////////
-
 /*
  * SoftAP credentials for config captive portal
  * if an AP password is defined it needs to be 8 characters or more
@@ -153,7 +147,7 @@ void publishError(char *setting="ERROR");
 #define APPSK  "" /* Do not set a password */
 #endif
 
-char softAP_ssid[20];
+char softAP_ssid[20]; /* ssid broadcast by the softAP for clients to connect to and change config settings */
 const char *softAP_password = APPSK;
 
 /* levels for debug messages */
@@ -204,12 +198,8 @@ char rawTopic[mqttMaxTopicLength]; /* will have the same string as the given 'to
 char mqttPayload[mqttMaxPayloadLength];
 char mqttClientId[20]; /* Unique client ID (clientPrefix+MAC) to connect to mqtt broker. Used by the mqtt module: mqttClient.connect()*/ 
 
-////////////Change the following two to bool to save space:
-//uint8_t mqttBrokerUpA = 0; /* Primary mqtt broker status flag. 0=failed / 1 = OK */
-//uint8_t mqttBrokerUpB = 0; /* Backup mqtt broker status flag. 0=failed / 1 = OK */
 bool mqttBrokerUpA = false; /* Primary mqtt broker status flag */
 bool mqttBrokerUpB = false; /* Backup mqtt broker status flag */
-/////////////////////////////////
 
 uint8_t mqttBrokerState = 0; /* state machine for sending updates -- see mqtt module */
 uint8_t mqttErrorCounter = 0; /* used to reset mqtt broker settings to defaults */
@@ -228,8 +218,6 @@ char tempBuffer[mqttMaxPayloadLength]; /*used for strcat/strcpy /payload and tem
 //uint16_t relayState = 0x0000; //all relays on
 uint16_t relayState = 0xFFFF; //all relays off
 
-
-////// PUT ALL THESE FUNCTION DEFINITIONS ON SEPARATE FILES AND SET DEBUG TRAP
 
 /*
  * LED Control
@@ -260,7 +248,6 @@ void setLED(int led, int action) {
 /* flags set by the WIFI callback functions */
 bool wifiStatusChange = false;
 
-//bool wifiStationUp = false;
 bool wifiStationConnected = false;
 bool wifiStationDisconnected = false;
 bool wifiReconnectAttempt = false; /* used to ignore wifiStationDisconnected event when attempting to reconnect */
@@ -272,9 +259,8 @@ bool wifiSoftApClientDisconnected = false;
 char clientMac[18] = {0};
 
 /* 
- *  TIMERS (Ticker)
+ *  TIMERS
  */
-
 Ticker blinkLedTimer; /* Timer to blink LED - calls blinkLed() - usage: blinkLedTimer.attach(0.5, blinkLed); on/off for 0.5 second */
 void blinkLed(){
   digitalWrite(LED, !(digitalRead(LED))); //invert current led state
@@ -288,16 +274,18 @@ void ledOn(){
 }
   
 
-/* Timer to disable softAP - calls softAPoff() - usage: softApTimer.attach(60, softAPoff); */
+/* Timer to disable softAP - Example to disable sofAP in 60 sec: softApTimer.attach(60, disableSoftAp); */
 Ticker softApTimer; 
-bool softAPoffFlag = true;
-void softAPoff(){
+bool softApUp = false;
+void disableSoftAp(){
   /* only disable softAP if there are no clients connected */
+  /////////////////////////////////////////////////////////
+  //TODO: DISCONNECT CLIENTS AND STOP DNS AND HTTP SERVERS
+  ///////////////////////////////////////////////////////////
   if (WiFi.softAPgetStationNum() == 0){                  
     WiFi.softAPdisconnect(true);
-    softAPoffFlag = true;
+    softApUp = false;
     wifiStatusChange = true;
-//    sprint(1, "---------------> called softAPoff()",);
     softApTimer.detach();
   }
 }
@@ -308,9 +296,8 @@ bool retryWifiFlag = true;
 void retryWifi(){
   /*
    * This function is called by the retryWifiTimer to set the retryWifiFlag
-   * When retryWifiFlag is set, the main loop() will disconnect current station-mode wifi
-   * and attempt to connect to the given AP.
-   * It will also restart the retryWifiTimer.
+   * When retryWifiFlag is set, the main loop() will disconnect station-mode from current AP
+   * and attempt to connect to the given AP and restart the retryWifiTimer.
    */
   retryWifiFlag = true;
   retryWifiTimer.detach();
@@ -346,7 +333,6 @@ void onStationDisconnected(const WiFiEventStationModeDisconnected event){
   internetUp = false;
 }
 
-
 /*
  * triggers when the NODE/STATION gets an IP from the Access Point
  * This event sets the systeme flag WiFi.isConnected()== true
@@ -360,7 +346,7 @@ void onStationGotIp(const WiFiEventStationModeGotIP event){
     retryWifiTimer.detach(); /* Stop retrying connecting to wifi - Connected with an IP! */ 
     retryWifiFlag = false; /* prevent disconneting and retrying station wifi! */
   }
-  /* Below print commands are for diagnostics only - Do not leave blocking commands on a callback! */
+  /* Below print commands are for test only - Do not leave blocking commands on a callback! */
 //  sprint(1, "STATION IP: ", event.ip); 
 //  sprint(1, "-------------> Event StationModeGotIP - WIFI IS UP: ", WiFi.isConnected());
 }
@@ -392,103 +378,26 @@ void onSoftAPclientDisconnected(const WiFiEventSoftAPModeStationDisconnected eve
  *  Callback for all wifi events
    *  But only used for event:
    *   WIFI_EVENT_SOFTAPMODE_DISTRIBUTE_STA_IP
- *  
- *  WiFi.onEvent is DEPRECATED!!!
-   *  But it is STILL INCLUDED IN THE LATEST ESP8266WiFiGeneric.cpp
+   *  
+ *  It uses WiFi.onEvent which is DEPRECATED!!!
+   *  STILL INCLUDED IN THE LATEST ESP8266WiFiGeneric.cpp
    *  https://github.com/esp8266/Arduino/blob/master/libraries/ESP8266WiFi/src/ESP8266WiFiGeneric.h#L63
    *  https://github.com/godstale/ESP8266_Arduino_IDE_Example/blob/master/example/WiFiClientEvents/WiFiClientEvents.ino
- *  
+   *  
  *  TRY ADDING THE 'DISTRIBUTE_STA_IP' EVENT IN THIS LIBRARY:
    *  https://github.com/esp8266/Arduino/blob/master/libraries/ESP8266WiFi/src/ESP8266WiFiGeneric.cpp#L94
    *  It seems that this event WIFI_EVENT_SOFTAPMODE_DISTRIBUTE_STA_IP
    *  triggers when an IP is assigned to a softAP client (Need to confirm)
- *  
+   *  
  *  This callback is registered in setup() with the line:
  *  WiFi.onEvent(softApDistributeIpEvent, WIFI_EVENT_SOFTAPMODE_DISTRIBUTE_STA_IP);
    *  https://techtutorialsx.com/2019/08/11/esp32-arduino-getting-started-with-wifi-events/
    *  https://github.com/esp8266/Arduino/blob/master/libraries/ESP8266WiFi/src/ESP8266WiFiType.h
- */
+   */
 void softApDistributeIpEvent(WiFiEvent_t event) {
   wifiSoftApClientGotIp = true;
   wifiStatusChange = true;
 }
-
-
-////// THE ABOVE IS DIFFERENT THAT THIS:
-//https://arduino-esp8266.readthedocs.io/en/latest/esp8266wifi/generic-examples.html
-//gotIpEventHandler = WiFi.onStationModeGotIP([](const WiFiEventStationModeGotIP& event){
-
-// fROM THE dhcp SIDE esp32
-//https://stackoverflow.com/questions/56078329/is-there-a-way-to-get-the-ip-address-that-assigned-to-the-new-sta-that-connected
-
-
-////TO TEST: GET MAC OF CONNECTED/DISCONNECTED SOFTAP CLIENT
-// WiFiEventHandler: https://arduino-esp8266.readthedocs.io/en/latest/esp8266wifi/generic-class.html#wifieventhandler
-// Code Example: https://arduino-esp8266.readthedocs.io/en/latest/esp8266wifi/generic-examples.html#the-code
-//
-// Note: The above client connect and disconnet events do not have the IP of the device, just the MAC:
-// https://github.com/esp8266/Arduino/blob/master/libraries/ESP8266WiFi/src/ESP8266WiFiType.h
-//
-//    struct WiFiEventSoftAPModeStationConnected{
-//        uint8 mac[6];
-//        uint8 aid;
-//    };
-//    struct WiFiEventSoftAPModeStationDisconnected{
-//        uint8 mac[6];
-//        uint8 aid;
-//    };
-/*
- * WiFiEventSoftAPModeStationConnected sta_info
- * WiFiEventSoftAPModeStationDisconnected sta_info
- * 
- * https://arduino-esp8266.readthedocs.io/en/latest/esp8266wifi/generic-class.html
- * WiFiEventHandler  onSoftAPModeStationConnected (std::function< void(const WiFiEventSoftAPModeStationConnected &)>)
- * WiFiEventHandler  onSoftAPModeStationDisconnected (std::function< void(const WiFiEventSoftAPModeStationDisconnected &)>)
- * 
- * https://github.com/esp8266/Arduino/issues/3638
- * https://github.com/esp8266/Arduino/issues/2100:
- */
-
-
-
-// FOR TEST ONLY - Enable CALLBACK REGISTRATION IN SETUP()
-// https://github.com/esp8266/Arduino/blob/master/libraries/ESP8266WiFi/examples/WiFiEvents/WiFiEvents.ino
-WiFiEventHandler probeRequestPrintHandler;
-void onProbeRequestPrint(const WiFiEventSoftAPModeProbeRequestReceived& evt) {
-  Serial.print("Probe request from: ");
-  //Serial.print(macToString(evt.mac));
-  char macStr[18];
-  // Copy the sender mac address to a string
-  snprintf(macStr, sizeof(macStr), MACSTR, MAC2STR(evt.mac));
-  Serial.print(macStr);
-  Serial.print(" RSSI: ");
-  Serial.println(evt.rssi);
-}
-
-
-///////////////////////////////
-///DID NOT TEST THIS ONE..... this might be for the ESP32.. !!!
-////////////////////
-///TEST -- it probably wont work because there is no event for distributed IP defined on WiFiEventHandler
-//WiFiEventHandler softApClientIp;
-////https://github.com/esp8266/Arduino/blob/master/libraries/ESP8266WiFi/src/ESP8266WiFiGeneric.cpp
-//https://bbs.espressif.com/viewtopic.php?t=1927
-//
-// CAN WE USE THIS WITH:  WIFI_EVENT_SOFTAPMODE_DISTRIBUTE_STA_IP ????????????????????
-//
-//void onSoftApClientIp(System_Event_t *event) {
-//  switch (event->event) {
-//    case WIFI_EVENT_SOFTAPMODE_STACONNECTED:
-//    case WIFI_EVENT_SOFTAPMODE_STADISCONNECTED: {
-//      char mac[32] = {0};
-//      snprintf(mac, 32, MACSTR ", aid: %d" , MAC2STR(event->event_info.sta_connected.mac), event->event_info.sta_connected.aid);
-//      Serial.println(mac);
-//    }
-//    break;
-//  }
-//}
-//
-
 
 /*
  * 
@@ -506,25 +415,23 @@ WiFiClient espClientB; //Backup mqtt broker
 PubSubClient mqttClientA(espClientA);
 PubSubClient mqttClientB(espClientB);
 
-/*
- * showFreeHeapOnChange()
- * 
- * Monitors memory leaks
- * Display a message when the free heap varies more than 1000
- * https://github.com/esp8266/Arduino/blob/master/cores/esp8266/Esp.cpp
- * uint32_t EspClass::getFreeHeap(void)
- */
 uint32 prevFreeHeap = 0; 
-void showFreeHeapOnChange(){  
-  if ( prevFreeHeap > ESP.getFreeHeap()+5000 ){
+void showFreeHeapOnChange(){
+  /* 
+   * Monitors memory leaks
+   * Display a message when the free heap varies more than 2000
+   * https://github.com/esp8266/Arduino/blob/master/cores/esp8266/Esp.cpp
+   * uint32_t EspClass::getFreeHeap(void)
+   */
+  if ( prevFreeHeap > ESP.getFreeHeap()+2000 ){
     sprint(0, "FREE HEAP DECREASED TO: ", ESP.getFreeHeap()); 
   }else{  
-    if ( prevFreeHeap + 5000 < ESP.getFreeHeap()){
+    if ( prevFreeHeap + 2000 < ESP.getFreeHeap()){
       sprint(2, "FREE HEAP INCREASED TO: ", ESP.getFreeHeap());
     }
   }
   if (ESP.getFreeHeap() < 20000){
-    sprint(0, "FREE HEAP IS GETTING LOW. POTENTIAL MEMORY LEAK! - ", ESP.getFreeHeap());
+    sprint(0, "FREE HEAP IS BELOW 50%. POSSIBLE MEMORY LEAK! - ", ESP.getFreeHeap());
   }
   prevFreeHeap = ESP.getFreeHeap();  
 }
@@ -580,18 +487,17 @@ void monitorEvents(){
       ledBlink();
       sprint(0, "MQTT BROKERS DOWN",);
     }    
-    if(softAPoffFlag){
-      sprint(2, "SOFTAP POINT DISSABLED", );
-    }else{
+    if(softApUp){
       sprint(2, "SOFTAP POINT ENABLED. Connected Clients: ", WiFi.softAPgetStationNum());
+    }else{
+      sprint(2, "SOFTAP POINT DISABLED", );
     }
     sprint(2,"Heap Fragmentation (< 50% is good): ", ESP.getHeapFragmentation());  /* 0% is clean. 50% OK */
     if (ESP.getHeapFragmentation() > 50){
       sprint(0, "HEAP FRAGMENTATION IS HIGH: ", ESP.getHeapFragmentation());
     }
-    showFreeHeapOnChange();
-    sprint(2,"",); /* add a blank line for readability */
   }
+  showFreeHeapOnChange();
 }
 
 
@@ -624,8 +530,7 @@ void setup() {
   sprint(2, "SDK Version: ", ESP.getSdkVersion());
   if (!ESP.checkFlashCRC()){
     sprint(0, "FLASH CORRUPTED!",);
-  }
-  
+  }  
 
   WiFi.persistent(false);   /* Do not store wifi settings in flash - this is handled by handleHttp */ 
   
@@ -710,6 +615,7 @@ void setup() {
 
   ledBlink();
 
+  setNodeId(); /* set the nodeId and the softAP ssid */
   startSoftAP(); /* Start softAP, DNS and HTTP servers for client configuration */
   
    /* 
@@ -747,8 +653,6 @@ void setup() {
 
 void loop() {
   monitorEvents(); /* Check if any event flags have been set - wifiStatusChange = true */
-  monitorWifiAP(); /* Connect to a wifi AP if not connected or it is a new config */
-  monitorDns(); /* service dns requests from softAP clients ---> ONLY WHILE SOFTAP IS ACTIVE */
+  monitorWifi(); /* Connect to a wifi AP if not connected or it is a new config */
   monitorMqtt(); /* service mqtt messages */
-  showFreeHeapOnChange(); /* monitor memory leaks. Display message if exceeds a threshold */
 } /* END OF LOOP */

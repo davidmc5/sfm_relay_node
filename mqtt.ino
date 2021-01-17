@@ -169,7 +169,7 @@ void loadMqttBrokerDefaults(){
  *  Only send status changes once.
  */
 void manageMqtt(){
-  /* check mqtt conection status only if connected to wifi */
+  /* check mqtt connection status only if connected to wifi */
 //  if (WiFi.status() == WL_CONNECTED && internetUp){
   if (internetUp){
     /* service mqtt requests */
