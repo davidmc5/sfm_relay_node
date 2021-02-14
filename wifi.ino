@@ -1,3 +1,5 @@
+
+
 void setNodeId(){
   /* 
    *  Sets nodeId to the mac address of the esp8266 and 
@@ -18,57 +20,17 @@ void setNodeId(){
   sprint(2, "Node's MAC Address: ", nodeId);
 }
 
-void startSoftAP(){
-  /*
-   * Starts the wifi soft access point used for initial wifi client configuration
-   * Starts the http server to handle requests via the soft AP and WLAN 
-   * Starts the dns server to redirect all requested domains to the http server IP (apIP)
-   * References
-     * https://arduino-esp8266.readthedocs.io/en/latest/esp8266wifi/soft-access-point-class.html
-     * https://lastminuteengineers.com/creating-esp8266-web-server-arduino-ide/
-     */  
-  sprint(2, "Configuring Soft Access Point...", );
-  /* Remove the password parameter (or set it to null to join the AP with only the ssid */
-  WiFi.softAPConfig(apIP, apIP, netMsk);
-  /*
-   * soft-AP and station modes share the same (single) hardware channel 
-   * the soft-AP channel will be set to the channel assigned to the station. 
-   * softAP clients connected with the default channel, before the station mode is up, may lose the connection if assigned channel changes.
-   * References:
-     * https://bbs.espressif.com/viewtopic.php?f=10&t=324
-     * WiFi.mode(m): set mode to WIFI_AP, WIFI_STA, WIFI_AP_STA or WIFI_OFF
-     * https://arduino-esp8266.readthedocs.io/en/latest/esp8266wifi/generic-class.html#mode
-     * https://stackoverflow.com/questions/59096373/differents-between-wifi-mode-and-wifi-set-opmode
-     * 0x01: Station mode
-     * 0x02: SoftAP mode
-     * 0x03: Station + SoftAP
-   */
-  WiFi.mode(WIFI_AP_STA); /* set wifi for both client (station) and softAP - The default mode is SoftAP mode */
-  /* the following two settings only affect station mode */
-  /* https://arduino-esp8266.readthedocs.io/en/latest/esp8266wifi/station-class.html#setautoreconnect */
-  WiFi.setAutoConnect(false); /* prevents the station client trying to reconnect to last AP on power on/boot */
-  WiFi.setAutoReconnect(false); /* prevents reconnecting to last AP if connection is lost */
-    //////////////////////////////////////////////
+// THIS FUNCTION NEEDS TO BE FIXED
+// 1) SOMETIMES TAKES TOO MANY RETRIES TO CONNECT TO SFM1 OR TEST1
+// IT IS POSSIBLE THAT THE ABOVE IS A PROBLEM WITH THE ROUTER. SEE LOGS
+// 2) ENFORCE NO SOFTAP ON BOOT AND IF NOT FIRST PASS.
 
-//The maximum number of stations that can simultaneously be connected to the soft-AP can be set from 0 to 8. The default is 4.
-//defaults: WiFi.softAP(ssid, password, channel=1, hidden=false, max_connection=4)
-//WiFi.softAP(softAP_ssid, softAP_password, 6, false, 4);
-  if (WiFi.softAP(softAP_ssid, softAP_password) ){ /* start softAP */    
-    sprint(1, "SOFTAP ENABLED. SSID: ", softAP_ssid);
-    sprint(2, "SoftAP IP Address: ", WiFi.softAPIP());
-    startDnsServer();
-    startHttpServer();
-  }else{
-    sprint(0, "SOFTAP INITIALIZATION FAILED!",);
-  }
-}
-
-/// CHANGE THIS FUCTION SO IT DOES NOT RE-ENABLE SOFTAP MODE AFTER TIMEOUT: WiFi.mode(WIFI_AP_STA)
 void monitorWifi(){
   monitorSoftApClients();  /* service dns and http requests if softAP is enabled */  
-  if(retryWifiFlag){
+  if(retryWifiFlag){ /* Connect to wifi AP */
     retryWifiFlag = false; /* don't check again until after new retry time is up*/
     /*
+     * TODO:
      * getNextAp()
      * 
      * selects the next AP:
@@ -84,72 +46,145 @@ void monitorWifi(){
     sprint(2, "CONNECTING TO WIFI SSID: ", cfgSettings.apSSIDlast);
     wifiReconnectAttempt = true; /* Ignore the known disconnect event that we are causing */  
     WiFi.disconnect(true); /* Clear previous connection and stop station mode - will generate a disconnect event */
-    delay(500); /* without some delay between disconnect and begin, it occasionally fails to connect to the AP */
+   
     ////////////////////////////////
-    //// TODO: IF ON BOOT IT FAILED TO CONNECT TO MQTT BROKERS, START SOFTAP FOR 60 SECONDS TO CONFIGURE AP
-    WiFi.mode(WIFI_AP_STA); /* set wifi for both client (station) and softAP - It was working without this, so it might be the default */
-//    WiFi.mode(WIFI_STA); /* set wifi for both client (station) mode only so it does not broadcast ssid */
-    //
-    WiFi.setAutoConnect(false); /* prevents the station client trying to reconnect to last AP on power on/boot */
+
+    //we might need to set both station and softap or it will disconnect the client if an incorrect ssid/pswd is given
+    /////////////////////////////////////
+    if(softApUp){
+      WiFi.mode(WIFI_AP_STA); /* set wifi for both client (station) and softAP */      
+    }else{
+      WiFi.mode(WIFI_STA); /* set wifi for station mode only so it does not broadcast ssid */
+    }
+    wifiStationRetries++;
+    sprint(1, "WIFI Station Retries: ", wifiStationRetries);
+    ///////////////////////////////////////        
+    delay(500); /* without some delay between disconnect and begin, it occasionally fails to connect to the AP */
+    WiFi.setAutoConnect(false); /* prevents the station client from trying to reconnect to last AP on power on/boot */
     WiFi.setAutoReconnect(false); /* prevents reconnecting to last AP if connection is lost */
 ///////////////////////////////
     WiFi.begin(cfgSettings.apSSIDlast, cfgSettings.apPSWDlast); /* connect to the last ssid/pswd in ram */
+    
+    /////////////////
+    //// set config softap just in case... FIND A BETTER WAY. DO NOT SET IF CONFIG IF SOFTAP IS NOT ENABLED!
+    delay(200); //THIS DELAY MINGT NOT BE NEEDED
+//    WiFi.softAPConfig(apIP, apIP, netMsk);
+    
+    /////////////////////////////////////////////
     /* start wifi retry timer - calls retryWifi() on timeout*/
-    if (WiFi.softAPgetStationNum() > 0){ /* Clients connected */
-      retryWifiTimer.attach(30, retryWifi); /* wait longer to retry when a client is connected to prioritize configuration tasks over wifi reconnects */
-    }else{ /* no clients connected. Retry more often */
-      retryWifiTimer.attach(10, retryWifi); 
-    }
+    retryWifiTimer.attach(10, retryWifi); /* retry wifi again in 5 seconds if not connected to mqtt broker */
+    
+//    if (WiFi.softAPgetStationNum() > 0){ /* Clients connected */
+//      retryWifiTimer.attach(30, retryWifi); /* wait longer to retry when a client is connected to prioritize configuration tasks over wifi reconnects */
+//    }else{ /* no clients connected. Retry more often */
+//      retryWifiTimer.attach(10, retryWifi); 
+//    }
+/////////////////////////////////////////////////
   }
 }
 
+void startSoftAP(){
+  /*
+   * Starts the wifi soft access point used for initial wifi client configuration on boot
+   * Starts the http server to handle requests via the soft AP and WLAN 
+   * Starts the dns server to redirect all requested domains to the http server IP (apIP)
+   * References
+     * https://arduino-esp8266.readthedocs.io/en/latest/esp8266wifi/soft-access-point-class.html
+     * https://lastminuteengineers.com/creating-esp8266-web-server-arduino-ide/
+     */  
+  sprint(2, "Starting Soft Access Point...", );
+/////////////// TESTING. This does not seem to make a difference:
+  WiFi.disconnect(true); //Disable STA
+  WiFi.mode(WIFI_OFF);
+  ////////////////////////
+  delay(200);  
+  /*
+   * soft-AP and station modes share the same (single) hardware channel 
+   * the soft-AP channel will be set to the channel assigned to the station. 
+   * softAP clients connected with the default channel, before the station mode is up, 
+   *  may lose the connection if assigned channel changes.
+   * References:
+     * https://bbs.espressif.com/viewtopic.php?f=10&t=324
+     * WiFi.mode(m): set mode to WIFI_AP, WIFI_STA, WIFI_AP_STA or WIFI_OFF
+     * https://arduino-esp8266.readthedocs.io/en/latest/esp8266wifi/generic-class.html#mode
+     * https://stackoverflow.com/questions/59096373/differents-between-wifi-mode-and-wifi-set-opmode
+     * 0x01: Station mode
+     * 0x02: SoftAP mode
+     * 0x03: Station + SoftAP
+   */
+   /////////////////////////////////
+  WiFi.mode(WIFI_AP_STA); /* set wifi for both client (station) and softAP - The default mode is SoftAP mode */
+//  WiFi.mode(WIFI_AP); /* set wifi for only softAP */
+  /*
+   * The maximum number of stations that can simultaneously be connected to the soft-AP can be set from 0 to 8. 
+   * The default is 4.
+   * defaults: WiFi.softAP(ssid, password, channel=1, hidden=false, max_connection=4)
+   */
+  //WiFi.softAP(softAP_ssid, softAP_password, 6, false, 4);
+  if (WiFi.softAP(softAP_ssid, softAP_password) ){ /* start softAP */
+    ////////////////////////////
+    delay(200); /* wait until event SYSTEM_EVENT_AP_START has fired, before setting configuration. 
+    /* https://github.com/espressif/arduino-esp32/issues/985#issuecomment-359157428 */
+    /* Remove the password parameter (or set it to null to join the AP with only the ssid */
+    WiFi.softAPConfig(apIP, apIP, netMsk);
+
+   ///////////////////////////
+    sprint(1, "SOFTAP ENABLED. SSID: ", softAP_ssid);
+    sprint(2, "SoftAP IP Address: ", WiFi.softAPIP());
+    startDnsServer();
+    startHttpServer();
+    softApUp = true; /* set the access point up flag only after both the dns and http servers are up */
+    softApTimer.attach(60, checkSoftAp); /* Disable softAP after 60 seconds if no clients are attached */  
+  }else{
+    sprint(0, "SOFTAP INITIALIZATION FAILED!",);
+  }
+}
+
+
+
 void monitorSoftApClients(){
-  /* service dns and http requests from softAP connected clients */
+  /*
+   * service dns and http requests from softAP connected clients 
+   */
   if (softApUp){
       dnsServer.processNextRequest();
-      //////
-      //If the ESP8266‘s station interface has been scanning or trying to connect to a target router, the ESP8266 softAP clients' connections may break.
-      //if not connected to an AP, set mode to softAP ONLY, so the channel does not change while user is configuring wifi.
-      httpServer.handleClient(); /* service http requests ONLY from softAP */   
+      httpServer.handleClient(); /* service http requests ONLY from softAP */ 
   } 
 }
 
 
 void startDnsServer(){
   /*
-   * Start dns server
-   * if DNSServer is started with with domain name = "*", 
-   * it should resolve all domains like zzzz.com with the IP apIP. But it takes a long time before it does.
-   * It seems to be a problem with the client browsers because the node does not print any debug until it finally serves the page.
-   * 
+   * if DNSServer is started with domain name = "*", 
+   * it will resolve all domains like zzzz.com with the IP apIP. 
+   * https://github.com/esp8266/Arduino/tree/master/libraries/DNSServer
    * https://github.com/esp8266/Arduino/blob/master/libraries/DNSServer/examples/DNSServer/DNSServer.ino
+   * https://github.com/esp8266/Arduino/blob/master/libraries/DNSServer/src/DNSServer.h#L58
    */
-  //dnsServer.setTTL(300); /* Default is 60 seconds.  https://www.varonis.com/blog/dns-ttl/ */
+  dnsServer.setTTL(60); /* Default is 60 seconds.  https://www.varonis.com/blog/dns-ttl/ */
   dnsServer.setErrorReplyCode(DNSReplyCode::NoError);
-  dnsServer.start(DNS_PORT, "*", apIP); // Returns true if successful, false if there are no sockets available:
-    //https://github.com/esp8266/Arduino/blob/master/libraries/DNSServer/src/DNSServer.h#L58
+  dnsServer.start(DNS_PORT, "*", apIP); // Returns true if successful, false if there are no sockets available
+  sprint(2, "DNS Server Started", );
 }
 
 
 void startHttpServer(){
   /*
    * The httpServer responds to http requests from clients connected to the softAP and WLAN
+   * https://github.com/esp8266/Arduino/tree/master/libraries/ESP8266WebServer
    * 
    * Sets up handler functions for: 
-   * * wifi config (on root /)
-   * * wifisave
-   * * not found.
+   * * / 
+   * * /wifisave
+   * * /configWait
+   * * Not Found.
    */
   httpServer.on("/", handleWifi);
   httpServer.on("/wifisave", handleWifiSave);
   httpServer.on("/configWait", handleConfigWait);
   httpServer.onNotFound(handleWifi);
-  httpServer.begin(); // Web server start
-  ////////////
-  //// CHECK HERE THAT THE WEB SERVER DID NOT RETURN AN ERROR CODE
+  httpServer.begin(); // Start Web Server
   sprint(2, "HTTP server started",);
-  softApTimer.attach(60, disableSoftAp); /* Disable softAP after 60 seconds from boot */
-  softApUp = true; /* set the access point up flag only after the dns and http servers are up */
 }
 
 
@@ -240,10 +275,11 @@ void showSoftApClients(){
  void checkInternet(){
   /*
    * Get the public IP address (if connected to wifi)
-   * If it succeeds, set the internetUp and wifiStatusChange flags
+   * If it succeeds, set the internetUp and nodeStatusChange flags
    */   
    if(!WiFi.isConnected()){
     internetUp = false;
+    strcpy(wanIp, "0.0.0.0"); /* Clear WAN IP */
     return;    
    }
    /*
@@ -275,10 +311,11 @@ void showSoftApClients(){
   
   //http.begin("http://api.ipify.org/?format=text");
   http.begin(client, "http://api.ipify.org/?format=text");
+  /////////////////////////////////////////////////////////
   // for testing:
   int prevTime = millis(); 
   sprint(1, "test", );
-  ///////////////////////////
+  /////////////////////////////////////////////////////////
   /*
    * https://techtutorialsx.com/2016/07/17/esp8266-http-get-requests/
    * https://techtutorialsx.com/2016/07/21/esp8266-post-requests/
@@ -303,7 +340,7 @@ void showSoftApClients(){
     ///// change sprintf to the more secure snprintf (will need to add the sizeof the string plus one for the null terminator
     sprintf(wanIp, "%s", http.getString().c_str());
     internetUp = true;
-    wifiStatusChange = true;
+    nodeStatusChange = true;
   }else{
     /* WiFI is up but either with no internet access, or test site is not sending a valid response */
     //check here:

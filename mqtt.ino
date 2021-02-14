@@ -147,7 +147,6 @@ void loadMqttBrokerDefaults(){
  * mqttBrokerOnline()
  * 
  * Call this function when at least one broker is back online
- * Set blinking LED to solid
  * sendState publishes online flag and node status topic to EACH online broker
  */
  void mqttBrokerOnline(){
@@ -169,8 +168,7 @@ void loadMqttBrokerDefaults(){
  *  Only send status changes once.
  */
 void manageMqtt(){
-  /* check mqtt connection status only if connected to wifi */
-//  if (WiFi.status() == WL_CONNECTED && internetUp){
+  /* check mqtt connection status only if connected to internet */
   if (internetUp){
     /* service mqtt requests */
     mqttClientA.loop();
@@ -319,10 +317,16 @@ void checkMqttBrokers(){
  *  
  *  checks if node is connected to each broker 
  *  and set status flags
- *  If node is not connected, attemp reconnect
+ *  If node is not connected, attemp to reconnect
  */  
-  if (!mqttClientA.connected()) {   /* Test Primary mqtt broker */ 
-    mqttBrokerUpA = 0; /* set broker as down */
+  if (!mqttClientA.connected()) {   /* Test Primary mqtt broker */
+    /////////////////
+    if(mqttBrokerUpA){
+      /* flag is up but broker is down: a mqtt status change has occured */
+      mqttBrokerUpA = false; /* set broker as down */
+      nodeStatusChange = true;
+    }
+
     /*
      * Attempt to connect to Primary Broker A
      * 
@@ -340,7 +344,8 @@ void checkMqttBrokers(){
     strcat(mqttTopic, nodeId);
     strcat(mqttTopic, "/state/");
     if (mqttClientA.connect(mqttClientId, cfgSettings.mqttUserA, cfgSettings.mqttPasswordA, mqttTopic, 0, true, "0" )) { 
-      mqttBrokerUpA = 1;  /* connected to primary broker */
+      mqttBrokerUpA = true;  /* connected to primary broker */
+      nodeStatusChange = true;
       sprint(1, "Connected to MQTT Broker A: ", cfgSettings.mqttServerA);
       /* Subscribe to all topics (/#) prefixed by this nodeId */
       strcpy(mqttTopic, nodeId);
@@ -353,7 +358,11 @@ void checkMqttBrokers(){
    }
   } /*end of Primary mqtt broker test */
   if (!mqttClientB.connected()) {   /* Test Backup mqtt broker */
-    mqttBrokerUpB = 0;       
+    if(mqttBrokerUpB){
+      /* flag is up but broker is down: set status change flag */
+      mqttBrokerUpB = false; /* set broker as down */
+      nodeStatusChange = true;
+    }   
     mqttClientB.setServer(cfgSettings.mqttServerB, atoi(cfgSettings.mqttPortB)); //Backup mqtt broker
     mqttClientB.setCallback(mqttCallbackB); //function executed when a MQTT message is received. 
     /* Set last will topic */
@@ -361,7 +370,8 @@ void checkMqttBrokers(){
     strcat(mqttTopic, nodeId);
     strcat(mqttTopic, "/state/");    
     if (mqttClientB.connect(mqttClientId, cfgSettings.mqttUserB, cfgSettings.mqttPasswordB, mqttTopic, 0, true, "0" )) { 
-      mqttBrokerUpB = 1;  /* connected to backup broker */        
+      mqttBrokerUpB = true;  /* connected to backup broker */
+      nodeStatusChange = true;        
       sprint(1, "Connected to MQTT Broker B: ", cfgSettings.mqttServerB);
       /* subscribe all topics for this nodeId (nodeId/#) */
       strcpy(mqttTopic, nodeId);
@@ -378,6 +388,7 @@ void checkMqttBrokers(){
     internetUp = false; /* Both brokers down: assume internet failure */
     ////set retryflag ?
   }
+  /* at least one broker is up */
   ///////////////////////////
 } /* end mqtt brokers check */
 

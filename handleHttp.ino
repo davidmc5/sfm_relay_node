@@ -149,24 +149,27 @@ return Page;
 void handleWifi() {
   /*
    * root configuration page
-   */
-  sprint(2, "SENDING CONFIGURATION PAGE TO CLIENT AT: ", httpServer.client().remoteIP());
-  /*
+   * 
    * The Location response header indicates the URL to redirect a page to. 
    * It is only meaningful when served with a 3xx (redirection) or 201 (POST/created) status response.
    * https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Location
    */ 
-  //httpServer.sendHeader("Location", "/", true); ///////FOR TESTING
+   /////
+//  httpServer.sendHeader("Location", "/", true); ///////FOR TESTING
+  ///////////
   
   httpServer.sendHeader("Cache-Control", "no-cache, no-store, must-revalidate");
-  httpServer.sendHeader("Pragma", "no-cache");
+//  httpServer.sendHeader("Pragma", "no-cache");
   httpServer.sendHeader("Expires", "-1");
-  String Page = configPage();  
+  String Page = configPage(); 
+   
 //  httpServer.send(302, "text/html", Page);
-  httpServer.send(200, "text/html", Page); 
+  httpServer.send(200, "text/html", Page);
+  sprint(2, "SENDING CONFIGURATION PAGE TO CLIENT AT: ", httpServer.client().remoteIP());
   //https://forum.arduino.cc/index.php?topic=649979.0
   httpServer.client().stop(); 
-  return;
+  delay(100);
+//  return;
 }
 
 
